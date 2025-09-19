@@ -1,0 +1,59 @@
+import torch
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
+
+def qda_accuracy(x_train, y_train, x_test, y_test, filters):
+    """Fit QDA model to the training data and return the accuracy on the test data."""
+    # Get the features
+    filters = torch.as_tensor(filters, dtype=torch.float)
+    z_train = torch.matmul(x_train, filters.T)
+    z_test = torch.matmul(x_test, filters.T)
+    # Fit QDA model
+    qda = QuadraticDiscriminantAnalysis()
+    qda.fit(z_train, y_train)
+    y_pred = qda.predict(z_test)
+    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
+    return accuracy
+
+
+def qda_accuracy_gaussian(x_train, y_train, filters):
+    """Fit QDA model to the training data and return the accuracy on the test data."""
+    filters = np.asarray(filters)
+    filters = filters / np.linalg.norm(filters, axis=1, keepdims=True)
+    # Get the features
+    z_train = torch.matmul(x_train, torch.as_tensor(filters.T).float())
+    # Add noise
+    #z_train += torch.randn_like(z_train) * torch.sqrt(NOISE_FISHER)
+    # Fit QDA model
+    qda = QuadraticDiscriminantAnalysis(store_covariance=True)
+    qda.fit(z_train, y_train)
+    # Simulate Gaussian data for the testing set
+    n_samples = 20000
+    z_test = []
+    y_test = []
+    for i in range(qda.means_.shape[0]):
+        mean = torch.tensor(qda.means_[i])
+        cov = torch.tensor(qda.covariance_[i])
+        dist = torch.distributions.MultivariateNormal(mean, cov)
+        z_test.append(dist.sample((n_samples,)))
+        y_test.append(torch.full((n_samples,), i))
+    z_test = torch.cat(z_test)
+    y_test = torch.cat(y_test)
+    y_pred = qda.predict(z_test)
+    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
+    return accuracy
+
+
+def knn_accuracy(x_train, y_train, x_test, y_test, filters):
+    """Fit KNN model to the training data and return the accuracy on the test data."""
+    # Get the features
+    filters = torch.as_tensor(filters, dtype=torch.float)
+    z_train = torch.matmul(x_train, filters.T)
+    z_test = torch.matmul(x_test, filters.T)
+    # Fit KNN model
+    from sklearn.neighbors import KNeighborsClassifier
+    knn = KNeighborsClassifier(n_neighbors=3)
+    knn.fit(z_train, y_train)
+    y_pred = knn.predict(z_test)
+    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
+    return accuracy
+

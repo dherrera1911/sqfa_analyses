@@ -45,37 +45,6 @@ y_train = train[1]
 y_test = test[1]
 
 
-########################
-### PLOT SOME STIMULI
-########################
-
-# Plot 5 random stimuli of the same class
-fig, axs = plt.subplots(1, 5, figsize=(10, 2))
-c_ind = torch.where(y_train == 10)[0]
-inds = torch.sort(torch.randint(0, len(c_ind), (5,)))[0]
-for i, ax in enumerate(axs.flat):
-    vid = train[0][c_ind[inds[i]]]
-    vmax = torch.max(torch.abs(vid))
-    vmin = -vmax
-    ax.imshow(vid.reshape(15, 30), cmap='gray', vmin=vmin, vmax=vmax)
-    ax.axis('off')
-plt.tight_layout()
-plt.savefig('figures/motion_stimuli_same_class.png')
-
-# Plot 5 random stimuli, with their corresponding class label
-fig, axs = plt.subplots(1, 5, figsize=(10, 2))
-inds = torch.sort(torch.randint(0, len(train[0]), (5,)))[0]
-for i, ax in enumerate(axs.flat):
-    vid = train[0][inds[i]]
-    vmax = torch.max(torch.abs(vid))
-    vmin = -vmax
-    ax.imshow(vid.reshape(15, 30), cmap='gray', vmin=vmin, vmax=vmax)
-    ax.axis('off')
-plt.tight_layout()
-plt.savefig('figures/motion_stimuli.png')
-plt.close()
-
-
 #############################
 #
 # TRAIN MODELS

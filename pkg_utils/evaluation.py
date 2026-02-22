@@ -1,12 +1,17 @@
 import torch
+import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 
-def qda_accuracy(x_train, y_train, x_test, y_test, filters):
+def qda_accuracy(x_train, y_train, x_test, y_test, filters, noise=0.0):
     """Fit QDA model to the training data and return the accuracy on the test data."""
     # Get the features
-    filters = torch.as_tensor(filters, dtype=torch.float)
+    filters = torch.as_tensor(filters, dtype=x_train.dtype)
     z_train = torch.matmul(x_train, filters.T)
     z_test = torch.matmul(x_test, filters.T)
+    # Add noise
+    if noise > 0:
+        z_train += torch.randn_like(z_train) * torch.sqrt(torch.as_tensor(noise))
+        z_test += torch.randn_like(z_test) * torch.sqrt(torch.as_tensor(noise))
     # Fit QDA model
     qda = QuadraticDiscriminantAnalysis()
     qda.fit(z_train, y_train)
@@ -21,8 +26,6 @@ def qda_accuracy_gaussian(x_train, y_train, filters):
     filters = filters / np.linalg.norm(filters, axis=1, keepdims=True)
     # Get the features
     z_train = torch.matmul(x_train, torch.as_tensor(filters.T).float())
-    # Add noise
-    #z_train += torch.randn_like(z_train) * torch.sqrt(NOISE_FISHER)
     # Fit QDA model
     qda = QuadraticDiscriminantAnalysis(store_covariance=True)
     qda.fit(z_train, y_train)
@@ -57,3 +60,24 @@ def knn_accuracy(x_train, y_train, x_test, y_test, filters):
     accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
     return accuracy
 
+
+def iterate_filter_sets(filter_bank):
+    """Yield individual filter sets regardless of being single or batched."""
+    if isinstance(filter_bank, np.ndarray):
+        if filter_bank.ndim == 3:
+            for filters in filter_bank:
+                yield filters
+        elif filter_bank.ndim == 2:
+            yield filter_bank
+        else:
+            raise ValueError(
+                f"Unexpected filter dimensionality: {filter_bank.ndim}, expected 2 or 3"
+            )
+    else:
+        array = np.asarray(filter_bank)
+        yield from iterate_filter_sets(array)
+
+
+def collect_metric_across_runs(filter_bank, metric_fn):
+    """Compute a metric for every set of filters associated with a model."""
+    return np.array([metric_fn(filters) for filters in iterate_filter_sets(filter_bank)])

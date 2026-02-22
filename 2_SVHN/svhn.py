@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torchvision
 from sklearn.decomposition import PCA, FastICA, FactorAnalysis
-from metric_learn import LMNN
+from metric_learn import LMNN, LFDA
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis, LinearDiscriminantAnalysis
 import sqfa
 import time
 
@@ -14,15 +15,21 @@ from pkg_utils import (
   scale_and_center,
   train_val_split,
   qda_accuracy,
+  knn_accuracy,
+  qda_accuracy_gaussian,
+  collect_metric_across_runs,
   validate_regularization,
-  SupervisedPCA
+  SupervisedPCA,
+  plot_filter_grid,
+  plot_metric_with_errorbars,
 )
 
 N_FILTERS = 9
 NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
+N_REPS = 20
 n_subsample = 10
 n_dim_lmnn = 100
-N_REPS = 20
+PRELOAD_VALS = True
 torch.manual_seed(2)
 
 #############################
@@ -84,97 +91,87 @@ np.save('filters/spca_time.npy', np.array(spca_time))
 # Train smSQFA
 # ------------------------------
 # Get noise hyperparameter via validation
-smsqfa_val = sqfa.model.SecondMomentsSQFA(
-    n_dim=x_train.shape[1],
-    n_filters=N_FILTERS,
-    feature_noise=0,
-)
+if not PRELOAD_VALS:
+    smsqfa_val = sqfa.model.SecondMomentsSQFA(
+        n_dim=x_train.shape[1],
+        n_filters=N_FILTERS,
+        feature_noise=0,
+    )
 
-noise_accs = validate_regularization(smsqfa_val, x_train, y_train, x_val, y_val, NOISE_VALS)
-smsqfa_noise = NOISE_VALS[torch.argmax(noise_accs)]
+    noise_accs = validate_regularization(
+      smsqfa_val, x_train_reg, y_train_reg, x_val, y_val, NOISE_VALS
+    )
+    smsqfa_noise = NOISE_VALS[torch.argmax(noise_accs)]
+    np.save('filters/smsqfa_noise.npy', np.array(smsqfa_noise))
+else:
+    smsqfa_noise = np.load('filters/smsqfa_noise.npy').item()
 
 smsqfa_filter_list = []
 smsqfa_times = []
 for _rep in range(N_REPS):
     smsqfa_model = sqfa.model.SecondMomentsSQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=smsqfa_noise,
+        n_dim=x_train.shape[1], n_filters=N_FILTERS, feature_noise=smsqfa_noise,
     )
     start = time.time()
-    smsqfa_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-    )
+    smsqfa_model.fit(x_train, y_train, max_epochs=300, show_progress=False)
     smsqfa_times.append(time.time() - start)
     smsqfa_filter_list.append(smsqfa_model.filters.detach().numpy())
 
 np.save('filters/smsqfa_filters.npy', np.array(smsqfa_filter_list))
 np.save('filters/smsqfa_time.npy', np.array(smsqfa_times))
-np.save('filters/smsqfa_noise.npy', np.array(smsqfa_noise))
 
 
 # ------------------------------
 # Train SQFA
 # ------------------------------
-sqfa_val = sqfa.model.SQFA(
-    n_dim=x_train.shape[1],
-    n_filters=N_FILTERS,
-    feature_noise=0,
-)
 
-sqfa_noise_accs = validate_regularization(sqfa_val, x_train, y_train, x_val, y_val, NOISE_VALS,
-)
-sqfa_noise = NOISE_VALS[torch.argmax(sqfa_noise_accs)]
+if not PRELOAD_VALS:
+    sqfa_val = sqfa.model.SQFA(
+        n_dim=x_train.shape[1],
+        n_filters=N_FILTERS,
+        feature_noise=0,
+    )
+
+    sqfa_noise_accs = validate_regularization(
+      sqfa_val, x_train_reg, y_train_reg, x_val, y_val, NOISE_VALS
+    )
+    sqfa_noise = NOISE_VALS[torch.argmax(sqfa_noise_accs)]
+    np.save('filters/sqfa_noise.npy', np.array(sqfa_noise))
+else:
+    sqfa_noise = np.load('filters/sqfa_noise.npy').item()
+
 
 sqfa_filter_list = []
 sqfa_times = []
 for _rep in range(N_REPS):
     sqfa_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=sqfa_noise,
+        n_dim=x_train.shape[1], n_filters=N_FILTERS, feature_noise=sqfa_noise,
     )
     start = time.time()
-    sqfa_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-    )
+    sqfa_model.fit(x_train, y_train, max_epochs=300, show_progress=False)
     sqfa_times.append(time.time() - start)
     sqfa_filter_list.append(sqfa_model.filters.detach().numpy())
 
-sqfa_filters = np.mean(np.stack(sqfa_filter_list, axis=0), axis=0)
-sqfa_time = float(np.mean(sqfa_times))
-
-np.save('filters/sqfa_filters.npy', sqfa_filters)
-np.save('filters/sqfa_time.npy', np.array(sqfa_time))
+np.save('filters/sqfa_filters.npy', sqfa_filter_list)
+np.save('filters/sqfa_time.npy', np.array(sqfa_times))
 
 
 # ------------------------------
 # Train Bhattacharyya
 # ------------------------------
-bhattacharyya_val = sqfa.model.SQFA(
-    n_dim=x_train.shape[1],
-    n_filters=N_FILTERS,
-    feature_noise=0,
-    distance_fun=sqfa.distances.bhattacharyya,
-)
+if not PRELOAD_VALS:
+    bhattacharyya_val = sqfa.model.SQFA(
+        n_dim=x_train.shape[1], n_filters=N_FILTERS, feature_noise=0,
+        distance_fun=sqfa.distances.bhattacharyya,
+    )
 
-bhattacharyya_noise_accs = validate_regularization(
-    bhattacharyya_val,
-    x_train,
-    y_train,
-    x_val,
-    y_val,
-    NOISE_VALS,
-    max_epochs=300,
-    show_progress=False,
-)
-bhattacharyya_noise = NOISE_VALS[torch.argmax(bhattacharyya_noise_accs)]
+    bhattacharyya_noise_accs = validate_regularization(
+        bhattacharyya_val, x_train_reg, y_train_reg, x_val, y_val, NOISE_VALS,
+    )
+    bhattacharyya_noise = NOISE_VALS[torch.argmax(bhattacharyya_noise_accs)]
+    np.save('filters/bhattacharyya_noise.npy', np.array(bhattacharyya_noise))
+else:
+    bhattacharyya_noise = np.load('filters/bhattacharyya_noise.npy').item()
 
 bhattacharyya_filter_list = []
 bhattacharyya_times = []
@@ -189,17 +186,56 @@ for _rep in range(N_REPS):
     bhattacharyya_model.fit(
         x_train,
         y_train,
-        max_epochs=300,
-        show_progress=False,
+        lr=0.2,
+        max_epochs=500,
+        show_progress=True,
     )
     bhattacharyya_times.append(time.time() - start)
     bhattacharyya_filter_list.append(bhattacharyya_model.filters.detach().numpy())
 
-bhattacharyya_filters = np.mean(np.stack(bhattacharyya_filter_list, axis=0), axis=0)
-bhattacharyya_time = float(np.mean(bhattacharyya_times))
+np.save('filters/bhattacharyya_filters.npy', bhattacharyya_filter_list)
+np.save('filters/bhattacharyya_time.npy', np.array(bhattacharyya_times))
 
-np.save('filters/bhattacharyya_filters.npy', bhattacharyya_filters)
-np.save('filters/bhattacharyya_time.npy', np.array(bhattacharyya_time))
+
+# ------------------------------
+# Train Hellinger
+# ------------------------------
+if not PRELOAD_VALS:
+    hellinger_val = sqfa.model.SQFA(
+        n_dim=x_train.shape[1], n_filters=N_FILTERS, feature_noise=0,
+        distance_fun=sqfa.distances.hellinger,
+    )
+
+    hellinger_noise_accs = validate_regularization(
+        hellinger_val, x_train_reg, y_train_reg, x_val, y_val, NOISE_VALS,
+    )
+    hellinger_noise = NOISE_VALS[torch.argmax(hellinger_noise_accs)]
+    np.save('filters/hellinger_noise.npy', np.array(hellinger_noise))
+else:
+    hellinger_noise = np.load('filters/hellinger_noise.npy').item()
+
+hellinger_filter_list = []
+hellinger_times = []
+for _rep in range(N_REPS):
+    hellinger_model = sqfa.model.SQFA(
+        n_dim=x_train.shape[1],
+        n_filters=N_FILTERS,
+        feature_noise=hellinger_noise,
+        distance_fun=sqfa.distances.hellinger,
+    )
+    start = time.time()
+    hellinger_model.fit(
+        x_train,
+        y_train,
+        max_epochs=300,
+        show_progress=False,
+    )
+    hellinger_times.append(time.time() - start)
+    hellinger_filter_list.append(hellinger_model.filters.detach().numpy())
+
+np.save('filters/hellinger_filters.npy', hellinger_filter_list)
+np.save('filters/hellinger_time.npy', np.array(hellinger_times))
+np.save('filters/hellinger_noise.npy', np.array(hellinger_noise))
 
 
 # ------------------------------
@@ -240,25 +276,42 @@ np.save('filters/fa_time.npy', np.array(fa_time))
 
 
 # ------------------------------
-# Train LMNN
+# Train LFDA
 # ------------------------------
-pca_subsample = PCA(n_components=n_dim_lmnn)
+pca_subsample = PCA(n_components=50)
 pca_subsample.fit(x_train)
 x_transformed = pca_subsample.transform(x_train)
 
-y_train_sub = y_train
-x_transformed, y_train_sub = x_transformed[::n_subsample], y_train[::n_subsample]
-
-lmnn = LMNN(n_neighbors=3, learn_rate=1e-6, n_components=9, init='pca',
-            verbose=True, max_iter=2000, convergence_tol=1.0)
+lfda = LFDA(n_components=N_FILTERS, k=5)
 start = time.time()
-lmnn.fit(x_transformed, y_train_sub)
-lmnn_time = time.time() - start
+lfda.fit(x_train, y_train)
+lfda_time = time.time() - start
+lfda_filters = lfda.components_
 
-lmnn_filters = pca_subsample.inverse_transform(lmnn.components_)
+np.save('filters/lfda_filters.npy', np.array(lfda_filters))
+np.save('filters/lfda_time.npy', np.array(lfda_time))
 
-np.save('filters/lmnn_filters.npy', np.array(lmnn_filters))
-np.save('filters/lmnn_time.npy', np.array(lmnn_time))
+
+# ------------------------------
+# Train LMNN
+# ------------------------------
+#pca_subsample = PCA(n_components=n_dim_lmnn)
+#pca_subsample.fit(x_train)
+#x_transformed = pca_subsample.transform(x_train)
+#
+#y_train_sub = y_train
+#x_transformed, y_train_sub = x_transformed[::n_subsample], y_train[::n_subsample]
+#
+#lmnn = LMNN(n_neighbors=3, learn_rate=1e-6, n_components=9, init='pca',
+#            verbose=True, max_iter=2000, convergence_tol=1.0)
+#start = time.time()
+#lmnn.fit(x_transformed, y_train_sub)
+#lmnn_time = time.time() - start
+#
+#lmnn_filters = pca_subsample.inverse_transform(lmnn.components_)
+#
+#np.save('filters/lmnn_filters.npy', np.array(lmnn_filters))
+#np.save('filters/lmnn_time.npy', np.array(lmnn_time))
 
 
 #############################
@@ -272,23 +325,23 @@ filter_names = [
     'sqfa_filters.npy',
     'smsqfa_filters.npy',
     'bhattacharyya_filters.npy',
+    'hellinger_filters.npy',
     'lda_filters.npy',
     'spca_filters.npy',
+    'lfda_filters.npy',
     'pca_filters.npy',
-    'ica_filters.npy',
-    'fa_filters.npy',
     'lmnn_filters.npy',
 ]
 
 model_names = [
   "SQFA",
   "smSQFA",
-  "Bhatt",
+  "SQFA-B",
+  "SQFA-H",
   "LDA",
   "SPCA",
+  "LFDA",
   "PCA",
-  "ICA",
-  "FA",
   "LMNN",
 ]
 
@@ -300,21 +353,6 @@ for name in filter_names:
       f'filters/{name.replace("filters", "time")}')
     )
 
-# Function to plot filters
-def plot_filters(filters, title):
-    fig, ax = plt.subplots(1, N_FILTERS, figsize=(7, 1), constrained_layout=True)
-    for i in range(N_FILTERS):
-        ax[i].imshow(filters[i].reshape(n_row, n_col), cmap='gray')
-        ax[i].axis('off')
-    plt.tight_layout()
-
-for name, filters in zip(model_names, model_filters):
-    plot_filters(filters, name)
-    plt.savefig(
-      f'figures/svhn_{name.lower()}_filters.png', bbox_inches='tight', pad_inches=0
-    )
-    plt.close()
-
 
 #############################
 #
@@ -322,21 +360,24 @@ for name, filters in zip(model_names, model_filters):
 #
 #############################
 
-fig, ax = plt.subplots(figsize=(7, 3))
-plt.bar(range(len(model_times)), model_times)
-plt.xticks(range(len(model_times)), model_names, fontsize=12)
-plt.yticks(fontsize=12)
-plt.ylabel("Training Time (s)", fontsize=14)
-plt.xlabel("Model", fontsize=14)
-# Make y axis logarithmic
-plt.yscale('log')
-# Print the times on top of the bars
-for i, training_time in enumerate(model_times):
-    plt.text(i, training_time * 1.5, f"{training_time:.2f}", ha='center', fontsize=12)
-plt.tight_layout()
-plt.ylim([min(model_times)*0.5, max(model_times) * 5])
-# Save image
-plt.savefig('figures/svhn_training_times.pdf')
+time_scores = [np.asarray(times, dtype=float).reshape(-1) for times in model_times]
+all_times = np.concatenate(time_scores)
+time_min = float(all_times.min()) if all_times.size else 0.1
+time_max = float(all_times.max()) if all_times.size else 1.0
+
+plot_metric_with_errorbars(
+    model_names,
+    time_scores,
+    "Training Time (s)",
+    'figures/svhn_training_times.pdf',
+    unit=" s",
+    value_fmt="{:.2f}",
+    spread_fmt="{:.2f}",
+    yscale='log',
+    ylim=(max(time_min * 0.5, 1e-3), time_max * 5),
+    offset_ratio=0.1,
+    min_offset=0.05,
+)
 
 
 #############################
@@ -345,41 +386,46 @@ plt.savefig('figures/svhn_training_times.pdf')
 #
 #############################
 
-def get_qda_accuracy(x_train, y_train, x_test, y_test, filters):
-    """Fit QDA model to the training data and return the accuracy on the test data."""
-    # Get the features
-    filters = torch.as_tensor(filters, dtype=torch.float)
-    z_train = torch.matmul(x_train, filters.T)
-    z_test = torch.matmul(x_test, filters.T)
-    # Fit QDA model
-    qda = QuadraticDiscriminantAnalysis()
-    qda.fit(z_train, y_train)
-    y_pred = qda.predict(z_test)
-    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
-    return accuracy
+qda_scores = [
+    collect_metric_across_runs(
+        filters,
+        lambda filt: qda_accuracy(x_train, y_train, x_test, y_test, filt).item(),
+    )
+    for filters in model_filters
+]
 
-accuracies = []
+plot_metric_with_errorbars(
+    model_names,
+    qda_scores,
+    "QDA Accuracy (%)",
+    'figures/svhn_accuracies.pdf',
+    scale=100.0,
+    ylim=(0, 100),
+    offset_ratio = 0.05,
+    unit="%",
+    show_errorbars=True,
+)
 
+
+#############################
+#
+# PLOT FILTERS
+#
+#############################
+
+# Function to plot filters
+i = 0
 for name, filters in zip(model_names, model_filters):
-    accuracy = get_qda_accuracy(x_train, y_train, x_test, y_test, filters)
-    accuracies.append(accuracy.item() * 100)
-
-# Plot accuracies
-fig, ax = plt.subplots(figsize=(7, 3))
-plt.bar(range(len(accuracies)), accuracies)
-plt.xticks(range(len(accuracies)), model_names, fontsize=12)
-plt.yticks(fontsize=12)
-plt.ylabel("QDA Accuracy (%)", fontsize=14)
-plt.xlabel("Features", fontsize=14)
-# Print the accuracies on top of the bars
-for i, acc in enumerate(accuracies):
-    plt.text(i, acc + 1, f"{acc:.1f}%", ha='center', fontsize=12)
-plt.tight_layout()
-ax.set_ylim([0, 80])  # Adjust if needed
-# Save image
-plt.savefig('figures/svhn_accuracies.pdf')
-plt.close()
-
+    if filters.ndim == 3:
+        # Plot filters with best performance 
+        ind = np.argmax(qda_scores[i])
+        filters = filters[ind]
+    plot_filter_grid(filters, (n_row, n_col), n_cols=9, figsize=(7, 1))
+    plt.savefig(
+      f'figures/svhn_{name.lower()}_filters.png', bbox_inches='tight', pad_inches=0
+    )
+    plt.close()
+    i += 1
 
 
 #############################
@@ -388,41 +434,24 @@ plt.close()
 #
 #############################
 
-def get_knn_accuracy(x_train, y_train, x_test, y_test, filters):
-    """Fit KNN model to the training data and return the accuracy on the test data."""
-    # Get the features
-    filters = torch.as_tensor(filters, dtype=torch.float)
-    z_train = torch.matmul(x_train, filters.T)
-    z_test = torch.matmul(x_test, filters.T)
-    # Fit KNN model
-    from sklearn.neighbors import KNeighborsClassifier
-    knn = KNeighborsClassifier(n_neighbors=3)
-    knn.fit(z_train, y_train)
-    y_pred = knn.predict(z_test)
-    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
-    return accuracy
-accuracies = []
-for name, filters in zip(model_names, model_filters):
-    accuracy = get_knn_accuracy(x_train, y_train, x_test, y_test, filters)
-    accuracies.append(accuracy.item() * 100)
+knn_scores = [
+    collect_metric_across_runs(
+        filters,
+        lambda filt: knn_accuracy(x_train, y_train, x_test, y_test, filt).item(),
+    )
+    for filters in model_filters
+]
 
-# Plot accuracies
-fig, ax = plt.subplots(figsize=(7, 3))
-plt.bar(range(len(accuracies)), accuracies)
-plt.xticks(range(len(accuracies)), model_names, fontsize=12)
-plt.yticks(fontsize=12)
-plt.ylabel("KNN Accuracy (%)", fontsize=14)
-plt.xlabel("Features", fontsize=14)
-# Print the accuracies on top of the bars
-for i, acc in enumerate(accuracies):
-    plt.text(i, acc + 1, f"{acc:.1f}%", ha='center', fontsize=12)
-plt.tight_layout()
-
-ax.set_ylim([0, 80])  # Adjust if needed
-# Save image
-plt.savefig('figures/svhn_accuracies_knn.pdf')
-
-
+plot_metric_with_errorbars(
+    model_names,
+    knn_scores,
+    "KNN Accuracy (%)",
+    'figures/svhn_accuracies_knn.pdf',
+    scale=100.0,
+    ylim=(0, 100),
+    offset_ratio = 0.05,
+    unit="%",
+)
 
 
 #############################
@@ -431,52 +460,21 @@ plt.savefig('figures/svhn_accuracies_knn.pdf')
 #
 #############################
 
-def get_qda_accuracy_gaussian(x_train, y_train, filters):
-    """Fit QDA model to the training data and return the accuracy on the test data."""
-    filters = np.asarray(filters)
-    filters = filters / np.linalg.norm(filters, axis=1, keepdims=True)
-    # Get the features
-    z_train = torch.matmul(x_train, torch.as_tensor(filters.T).float())
-    # Add noise
-    #z_train += torch.randn_like(z_train) * torch.sqrt(NOISE_FISHER)
-    # Fit QDA model
-    qda = QuadraticDiscriminantAnalysis(store_covariance=True)
-    qda.fit(z_train, y_train)
-    # Simulate Gaussian data for the testing set
-    n_samples = 20000
-    z_test = []
-    y_test = []
-    for i in range(qda.means_.shape[0]):
-        mean = torch.tensor(qda.means_[i])
-        cov = torch.tensor(qda.covariance_[i])
-        dist = torch.distributions.MultivariateNormal(mean, cov)
-        z_test.append(dist.sample((n_samples,)))
-        y_test.append(torch.full((n_samples,), i))
-    z_test = torch.cat(z_test)
-    y_test = torch.cat(y_test)
-    y_pred = qda.predict(z_test)
-    accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))
-    return accuracy
+qda_gaussian_scores = [
+    collect_metric_across_runs(
+        filters,
+        lambda filt: qda_accuracy_gaussian(x_train, y_train, filt),
+    )
+    for filters in model_filters
+]
 
-
-accuracies = []
-
-for name, filters in zip(model_names, model_filters):
-    accuracy = get_qda_accuracy_gaussian(x_train, y_train, filters)
-    accuracies.append(accuracy.item() * 100)
-
-# Plot accuracies
-fig, ax = plt.subplots(figsize=(7, 3))
-plt.bar(range(len(accuracies)), accuracies)
-plt.xticks(range(len(accuracies)), model_names, fontsize=12)
-plt.yticks(fontsize=12)
-plt.ylabel("QDA Accuracy (%)", fontsize=14)
-plt.xlabel("Features", fontsize=14)
-# Print the accuracies on top of the bars
-for i, acc in enumerate(accuracies):
-    plt.text(i, acc + 1, f"{acc:.1f}%", ha='center', fontsize=12)
-plt.tight_layout()
-ax.set_ylim([0, 80])  # Adjust if needed
-# Save image
-plt.savefig('figures/svhn_accuracies_gaussian.pdf')
-plt.close()
+plot_metric_with_errorbars(
+    model_names,
+    qda_gaussian_scores,
+    "QDA Accuracy (%)",
+    'figures/svhn_accuracies_gaussian.pdf',
+    scale=100.0,
+    ylim=(0, 100),
+    offset_ratio = 0.05,
+    unit="%",
+)

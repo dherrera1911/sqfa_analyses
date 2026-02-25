@@ -16,6 +16,6 @@ def validate_regularization(model, x_train, y_train, x_val, y_val, noise_vals, *
 
         model.fit(x_train, y_train, **kwargs)
 
-        acc = qda_accuracy(x_train, y_train, x_val, y_val, model.filters.detach())
+        acc = qda_accuracy(x_train, y_train, x_val, y_val, model.filters.detach(), noise=0.001)
         accuracies[i] = acc
     return accuracies

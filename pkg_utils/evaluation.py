@@ -13,7 +13,7 @@ def qda_accuracy(x_train, y_train, x_test, y_test, filters, noise=0.0):
         z_train += torch.randn_like(z_train) * torch.sqrt(torch.as_tensor(noise))
         z_test += torch.randn_like(z_test) * torch.sqrt(torch.as_tensor(noise))
     # Fit QDA model
-    qda = QuadraticDiscriminantAnalysis()
+    qda = QuadraticDiscriminantAnalysis(solver='eigen', shrinkage=1.0e-5, tol=1.0e-7)
     qda.fit(z_train, y_train)
     y_pred = qda.predict(z_test)
     accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))

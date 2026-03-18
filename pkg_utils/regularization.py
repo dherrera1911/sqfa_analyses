@@ -2,7 +2,7 @@ import torch
 from .evaluation import qda_accuracy
 
 
-def validate_regularization(model, x_train, y_train, x_val, y_val, noise_vals, **kwargs):
+def validate_regularization(model, x_train, y_train, x_val, y_val, noise_vals, qda_noise=0, **kwargs):
     """
     Perform cross-validation for the regularization parameter
     """
@@ -16,6 +16,6 @@ def validate_regularization(model, x_train, y_train, x_val, y_val, noise_vals, *
 
         model.fit(x_train, y_train, **kwargs)
 
-        acc = qda_accuracy(x_train, y_train, x_val, y_val, model.filters.detach(), noise=0.001)
+        acc = qda_accuracy(x_train, y_train, x_val, y_val, model.filters.detach(), noise=qda_noise)
         accuracies[i] = acc
     return accuracies

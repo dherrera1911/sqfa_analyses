@@ -1,4 +1,4 @@
-"""Plotting helpers shared by experiments."""
+"""Plotting helpers for visualizing learned filters and aggregate metrics."""
 from __future__ import annotations
 
 from typing import Iterable, Optional, Sequence, Tuple

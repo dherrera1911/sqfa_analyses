@@ -1,19 +1,34 @@
+"""Evaluation utilities for scoring learned filters with downstream classifiers."""
+
 import torch
 import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 
-def qda_accuracy(x_train, y_train, x_test, y_test, filters, noise=0.0):
+
+def qda_accuracy(
+    x_train,
+    y_train,
+    x_test,
+    y_test,
+    filters,
+    eval_qda_noise=0.0,
+    eval_qda_reg=1.0e-5,
+):
     """Fit QDA model to the training data and return the accuracy on the test data."""
     # Get the features
     filters = torch.as_tensor(filters, dtype=x_train.dtype)
     z_train = torch.matmul(x_train, filters.T)
     z_test = torch.matmul(x_test, filters.T)
     # Add noise
-    if noise > 0:
-        z_train += torch.randn_like(z_train) * torch.sqrt(torch.as_tensor(noise))
-        z_test += torch.randn_like(z_test) * torch.sqrt(torch.as_tensor(noise))
+    if eval_qda_noise > 0:
+        z_train += torch.randn_like(z_train) * torch.sqrt(torch.as_tensor(eval_qda_noise))
+        z_test += torch.randn_like(z_test) * torch.sqrt(torch.as_tensor(eval_qda_noise))
     # Fit QDA model
-    qda = QuadraticDiscriminantAnalysis(solver='eigen', shrinkage=1.0e-5, tol=1.0e-7)
+    qda = QuadraticDiscriminantAnalysis(
+        solver='eigen',
+        shrinkage=eval_qda_reg,
+        tol=1.0e-7,
+    )
     qda.fit(z_train, y_train)
     y_pred = qda.predict(z_test)
     accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))

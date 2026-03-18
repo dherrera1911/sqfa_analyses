@@ -1,3 +1,5 @@
+"""Alternative supervised dimensionality reduction models used for comparison."""
+
 from typing import Optional, Union
 import numpy as np
 import torch
@@ -252,4 +254,3 @@ class SparseRatioLDA(nn.Module):
             prev_loss = loss.item()
 
         return self
-

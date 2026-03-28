@@ -61,15 +61,16 @@ def qda_accuracy_gaussian(x_train, y_train, filters):
     return accuracy
 
 
-def knn_accuracy(x_train, y_train, x_test, y_test, filters):
+def knn_accuracy(x_train, y_train, x_test, y_test, filters, n_neighbors=3):
     """Fit KNN model to the training data and return the accuracy on the test data."""
     # Get the features
-    filters = torch.as_tensor(filters, dtype=torch.float)
+    filters = torch.as_tensor(filters, dtype=x_train.dtype)
     z_train = torch.matmul(x_train, filters.T)
     z_test = torch.matmul(x_test, filters.T)
     # Fit KNN model
     from sklearn.neighbors import KNeighborsClassifier
-    knn = KNeighborsClassifier(n_neighbors=3)
+
+    knn = KNeighborsClassifier(n_neighbors=n_neighbors)
     knn.fit(z_train, y_train)
     y_pred = knn.predict(z_test)
     accuracy = torch.mean(torch.as_tensor(y_pred == y_test.numpy(), dtype=torch.float))

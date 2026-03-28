@@ -142,3 +142,100 @@ def load_or_validate_noise(
     best_noise = float(noise_vals[torch.argmax(noise_accs)].item())
     np.save(noise_path, np.asarray(best_noise))
     return best_noise
+
+
+def validate_wda_reg(
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+    reg_vals,
+    n_filters,
+    n_pca_components,
+    samples_per_class,
+    eval_qda_reg=1.0e-5,
+    seed=0,
+    sinkhorn_iters=10,
+    maxiter=40,
+    sinkhorn_method="sinkhorn",
+    solver="steepest",
+    normalize=True,
+    pca_solver="randomized",
+):
+    """Validate POT-WDA entropic regularization values with downstream QDA."""
+    reg_vals = np.asarray(reg_vals, dtype=float).reshape(-1)
+    if reg_vals.size == 0:
+        raise ValueError("reg_vals must contain at least one candidate value")
+
+    accuracies = torch.empty(reg_vals.size, dtype=torch.float32)
+    for idx, reg in enumerate(reg_vals):
+        filters, _elapsed = fit_wda(
+            x_train=x_train,
+            y_train=y_train,
+            n_filters=n_filters,
+            n_pca_components=n_pca_components,
+            reg=float(reg),
+            samples_per_class=samples_per_class,
+            seed=seed,
+            sinkhorn_iters=sinkhorn_iters,
+            maxiter=maxiter,
+            sinkhorn_method=sinkhorn_method,
+            solver=solver,
+            normalize=normalize,
+            pca_solver=pca_solver,
+        )
+        accuracies[idx] = qda_accuracy(
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            filters,
+            eval_qda_reg=eval_qda_reg,
+        )
+    return accuracies
+
+
+def load_or_validate_wda_reg(
+    reg_path,
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+    reg_vals,
+    n_filters,
+    n_pca_components,
+    samples_per_class,
+    eval_qda_reg=1.0e-5,
+    seed=0,
+    sinkhorn_iters=10,
+    maxiter=40,
+    sinkhorn_method="sinkhorn",
+    solver="steepest",
+    normalize=True,
+    pca_solver="randomized",
+):
+    """Load a saved WDA regularization value or select and cache it."""
+    if os.path.exists(reg_path):
+        return float(np.load(reg_path).item())
+
+    reg_accs = validate_wda_reg(
+        x_train=x_train,
+        y_train=y_train,
+        x_val=x_val,
+        y_val=y_val,
+        reg_vals=reg_vals,
+        n_filters=n_filters,
+        n_pca_components=n_pca_components,
+        samples_per_class=samples_per_class,
+        eval_qda_reg=eval_qda_reg,
+        seed=seed,
+        sinkhorn_iters=sinkhorn_iters,
+        maxiter=maxiter,
+        sinkhorn_method=sinkhorn_method,
+        solver=solver,
+        normalize=normalize,
+        pca_solver=pca_solver,
+    )
+    best_reg = float(reg_vals[int(torch.argmax(reg_accs).item())])
+    np.save(reg_path, np.asarray(best_reg))
+    return best_reg

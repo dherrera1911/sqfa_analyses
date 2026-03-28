@@ -11,12 +11,21 @@ from .evaluation import (
 from .artifacts import artifact_path, has_saved_artifacts, load_cached_filters, save_training_artifacts
 from .regularization import (
     load_or_validate_noise,
+    load_or_validate_wda_reg,
     validate_lfda_k,
     validate_regularization,
+    validate_wda_reg,
 )
-from .training import fit_sqfa_adaptive_precision, train_sqfa_repeated
+from .training import (
+    fit_sqfa_adaptive_precision,
+    train_lfda_repeated,
+    train_lmnn_repeated,
+    train_metric_learn_repeated,
+    train_sqfa_repeated,
+)
 from .suppca import SupervisedPCA
 from .plot import plot_filter_grid, plot_metric_with_errorbars
+from .wda import balanced_subset_indices, fit_wda
 
 
 __all__ = [
@@ -35,8 +44,14 @@ __all__ = [
     "validate_regularization",
     "validate_lfda_k",
     "load_or_validate_noise",
+    "validate_wda_reg",
+    "load_or_validate_wda_reg",
     "fit_sqfa_adaptive_precision",
+    "train_metric_learn_repeated",
     "train_sqfa_repeated",
+    "train_lfda_repeated",
+    "train_lmnn_repeated",
+    "fit_wda",
     "balanced_subset_indices",
     "SupervisedPCA",
     "plot_filter_grid",

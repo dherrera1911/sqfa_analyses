@@ -23,7 +23,7 @@ from pkg_utils import (
 
 N_FILTERS = 9
 NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
-N_REPS =5 
+N_REPS =5
 FILTERS_DIR = "filters"
 LFDA_PCA_DIM = 200
 LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
@@ -282,7 +282,7 @@ plot_metric_with_errorbars(
     model_names,
     qda_scores,
     "QDA Accuracy (%)",
-    'figures/svhn_accuracies_review.pdf',
+    'figures_review/svhn_accuracies_review.pdf',
     scale=100.0,
     ylim=(0, 100),
     offset_ratio=0.05,

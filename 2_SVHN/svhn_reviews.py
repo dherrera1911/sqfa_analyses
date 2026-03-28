@@ -2,9 +2,7 @@ import os
 import torch
 import numpy as np
 import torchvision
-from metric_learn import LFDA
 import sqfa
-import time
 
 import sys
 sys.path.append('..')  # Add parent directory to path
@@ -12,10 +10,8 @@ sys.path.append('..')  # Add parent directory to path
 from pkg_utils import (
   scale_and_center,
   train_val_split,
+  train_lfda_repeated,
   train_sqfa_repeated,
-  fit_preprocessing_pca,
-  transform_with_pca,
-  lift_filters_from_pca,
   qda_accuracy,
   collect_metric_across_runs,
   load_or_validate_noise,
@@ -27,6 +23,7 @@ N_FILTERS = 9
 NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
 N_REPS =5
 FILTERS_DIR = "filters_review"
+SQFA_FIT_KWARGS = {"max_epochs": 500, "show_progress": False}
 LFDA_PCA_DIM = 200
 LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
 LFDA_EMBEDDING_TYPE = "orthonormalized"
@@ -77,9 +74,6 @@ y_test = torch.as_tensor(testset.labels, dtype=torch.long)
 
 x_train, x_test = scale_and_center(x_train, x_test)
 
-training_pca = fit_preprocessing_pca(x_train, LFDA_PCA_DIM)
-x_train_pca = transform_with_pca(training_pca, x_train)
-
 
 #############################
 #
@@ -104,7 +98,7 @@ sqfa_noise = load_or_validate_noise(
     x_val=x_val,
     y_val=y_val,
     noise_vals=NOISE_VALS,
-    fit_kwargs={"max_epochs": 300, "show_progress": False},
+    fit_kwargs=SQFA_FIT_KWARGS,
     run_label="sqfa validation",
 )
 
@@ -118,7 +112,7 @@ if not has_saved_artifacts("sqfa"):
         x_train=x_train,
         y_train=y_train,
         n_reps=N_REPS,
-        fit_kwargs={"max_epochs": 300, "show_progress": False},
+        fit_kwargs=SQFA_FIT_KWARGS,
         run_label="sqfa training",
     )
     save_artifacts("sqfa", sqfa_filters, sqfa_times)
@@ -134,13 +128,14 @@ wasserstein_noise = load_or_validate_noise(
         n_filters=N_FILTERS,
         feature_noise=noise,
         distance_fun=sqfa.distances.wasserstein,
+        constraint="orthogonal",
     ),
     x_train=x_train_reg,
     y_train=y_train_reg,
     x_val=x_val,
     y_val=y_val,
     noise_vals=NOISE_VALS,
-    fit_kwargs={"max_epochs": 300, "show_progress": False},
+    fit_kwargs=SQFA_FIT_KWARGS,
     dtypes=(torch.float64,),
     run_label="wasserstein validation",
 )
@@ -152,11 +147,12 @@ if not has_saved_artifacts("wasserstein"):
             n_filters=N_FILTERS,
             feature_noise=wasserstein_noise,
             distance_fun=sqfa.distances.wasserstein,
+            constraint="orthogonal",
         ),
         x_train=x_train,
         y_train=y_train,
         n_reps=N_REPS,
-        fit_kwargs={"max_epochs": 300, "show_progress": False},
+        fit_kwargs=SQFA_FIT_KWARGS,
         dtypes=(torch.float64,),
         run_label="wasserstein training",
     )
@@ -179,7 +175,7 @@ jeffreys_noise = load_or_validate_noise(
     x_val=x_val,
     y_val=y_val,
     noise_vals=NOISE_VALS,
-    fit_kwargs={"max_epochs": 300, "show_progress": False},
+    fit_kwargs=SQFA_FIT_KWARGS,
     run_label="jeffreys validation",
 )
 
@@ -194,7 +190,7 @@ if not has_saved_artifacts("jeffreys"):
         x_train=x_train,
         y_train=y_train,
         n_reps=N_REPS,
-        fit_kwargs={"max_epochs": 300, "show_progress": False},
+        fit_kwargs=SQFA_FIT_KWARGS,
         run_label="jeffreys training",
     )
     save_artifacts("jeffreys", jeffreys_filters, jeffreys_times)
@@ -204,7 +200,6 @@ if not has_saved_artifacts("jeffreys"):
 # Train LFDA
 # ------------------------------
 if not has_saved_artifacts("lfda"):
-    # Select k by validation
     lfda_accs = validate_lfda_k(
         x_train=x_train,
         y_train=y_train,
@@ -217,17 +212,17 @@ if not has_saved_artifacts("lfda"):
     )
     best_k = int(LFDA_K_VALS[torch.argmax(lfda_accs)].item())
 
-    lfda = LFDA(
-      n_components=N_FILTERS,
-      k=best_k,
-      embedding_type=LFDA_EMBEDDING_TYPE,
+    lfda_filters, lfda_times = train_lfda_repeated(
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        n_filters=N_FILTERS,
+        k=best_k,
+        n_pca_components=LFDA_PCA_DIM,
+        embedding_type=LFDA_EMBEDDING_TYPE,
+        run_label="lfda training",
     )
-    start = time.time()
-    lfda.fit(x_train_pca.detach().cpu().numpy(), y_train.detach().cpu().numpy())
-    lfda_filters = lift_filters_from_pca(lfda.components_, training_pca)
-    lfda_time = time.time() - start
-
-    save_artifacts("lfda", lfda_filters, lfda_time)
+    save_artifacts("lfda", lfda_filters, lfda_times)
 
 
 #############################

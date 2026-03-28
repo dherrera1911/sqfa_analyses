@@ -1,0 +1,31 @@
+[project]
+name = "sqfa-paper-code"
+version = "0.1.0"
+description = "uv environment for the Supervised Quadratic Feature Analysis paper code"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "ipython",
+    "sqfa",
+    "torch>=2.7,<2.8",
+    "torchvision>=0.22,<0.23",
+    "matplotlib>=3.8",
+    "metric-learn>=0.7",
+    "numpy>=1.26",
+    "scikit-learn>=1.8",
+    "tqdm>=4.66",
+    "pot[dr]>=0.9.6.post1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+metric-learn = { git = "https://github.com/dherrera1911/metric-learn", branch = "check-xy-fix" }
+sqfa = { git = "https://github.com/dherrera1911/sqfa" }
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

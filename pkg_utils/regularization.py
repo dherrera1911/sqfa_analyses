@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from .data import train_val_split
 from .evaluation import qda_accuracy
 from .training import fit_sqfa_adaptive_precision
+from .wda import fit_wda
 
 
 def validate_regularization(
@@ -66,6 +67,7 @@ def validate_lfda_k(
     n_pca_components,
     eval_qda_reg=1.0e-5,
     val_size=0.2,
+    embedding_type="weighted",
 ):
     """Validate the LFDA neighborhood parameter k with a PCA->LFDA->QDA pipeline."""
     k_vals = torch.as_tensor(k_vals, dtype=torch.int64)
@@ -86,7 +88,7 @@ def validate_lfda_k(
     pipeline = Pipeline(
         [
             ("pca", PCA(n_components=n_pca_components)),
-            ("lfda", LFDA(n_components=n_filters)),
+            ("lfda", LFDA(n_components=n_filters, embedding_type=embedding_type)),
             (
                 "qda",
                 QuadraticDiscriminantAnalysis(

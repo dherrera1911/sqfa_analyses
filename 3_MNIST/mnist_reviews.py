@@ -263,10 +263,10 @@ plot_metric_with_errorbars(
     model_names,
     qda_scores,
     "QDA Accuracy (%)",
-    'figures/mnist_accuracies_review.pdf',
+    'figures_review/mnist_accuracies_review.pdf',
     scale=100.0,
-    ylim=(60, 100),
-    offset_ratio=0.05,
+    ylim=(80, 100),
+    offset_ratio=0.01,
     unit="%",
     figsize=(4,3),
 )

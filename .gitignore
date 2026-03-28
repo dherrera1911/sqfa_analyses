@@ -1,0 +1,16 @@
+.pkg_model
+README.md
+.pt
+.csv
+*variability*
+*.swp
+__pycache__/
+*figures*
+*filters*
+*data*
+*.pdf
+*.npy
+*/distances_plot/*
+*.md
+.envrc
+*results_review*

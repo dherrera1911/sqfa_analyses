@@ -1,10 +1,8 @@
+import os
 import torch
 import numpy as np
 import torchvision
-from metric_learn import LFDA
-from sklearn.decomposition import PCA
 import sqfa
-import time
 
 import sys
 sys.path.append('..')  # Add parent directory to path
@@ -12,19 +10,48 @@ sys.path.append('..')  # Add parent directory to path
 from pkg_utils import (
   scale_and_center,
   train_val_split,
+  train_lfda_repeated,
+  train_sqfa_repeated,
   qda_accuracy,
   collect_metric_across_runs,
-  validate_regularization,
+  load_or_validate_noise,
+  validate_lfda_k,
   plot_metric_with_errorbars,
 )
 
 N_FILTERS = 9
 NOISE_VALS = torch.tensor([0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0])
-n_subsample = 10
-n_dim_lmnn = 100
-N_REPS = 20
-PRELOAD_VALS = True
-torch.manual_seed(3)
+N_REPS = 5
+FILTERS_DIR = "filters_review"
+SQFA_FIT_KWARGS = {"max_epochs": 500, "show_progress": False}
+LFDA_PCA_DIM = 100
+LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
+LFDA_EMBEDDING_TYPE = "orthonormalized"
+ARTIFACT_SUFFIX = f"review"
+torch.manual_seed(2)
+
+os.makedirs(FILTERS_DIR, exist_ok=True)
+
+
+def filter_path(model_key):
+    return f"{FILTERS_DIR}/{model_key}_filters{ARTIFACT_SUFFIX}.npy"
+
+
+def time_path(model_key):
+    return f"{FILTERS_DIR}/{model_key}_time{ARTIFACT_SUFFIX}.npy"
+
+
+def noise_path(model_key):
+    return f"{FILTERS_DIR}/{model_key}_noise{ARTIFACT_SUFFIX}.npy"
+
+
+def has_saved_artifacts(model_key):
+    return os.path.exists(filter_path(model_key)) and os.path.exists(time_path(model_key))
+
+
+def save_artifacts(model_key, filters, times):
+    np.save(filter_path(model_key), np.asarray(filters))
+    np.save(time_path(model_key), np.asarray(times))
 
 #############################
 #
@@ -60,146 +87,144 @@ x_train_reg, y_train_reg, x_val, y_val = train_val_split(
 # ------------------------------
 # Train SQFA
 # ------------------------------
-if not PRELOAD_VALS:
-    sqfa_val = sqfa.model.SQFA(
+sqfa_noise = load_or_validate_noise(
+    noise_path=noise_path("sqfa"),
+    model_factory=lambda noise: sqfa.model.SQFA(
         n_dim=x_train.shape[1],
         n_filters=N_FILTERS,
-        feature_noise=0,
-    )
-    sqfa_val.to(dtype=torch.float64)
+        feature_noise=noise,
+    ),
+    x_train=x_train_reg,
+    y_train=y_train_reg,
+    x_val=x_val,
+    y_val=y_val,
+    noise_vals=NOISE_VALS,
+    fit_kwargs=SQFA_FIT_KWARGS,
+    dtypes=(torch.float64,),
+    run_label="sqfa validation",
+)
 
-    sqfa_noise_accs = validate_regularization(
-      sqfa_val, x_train_reg.to(dtype=torch.float64), y_train_reg, x_val.to(dtype=torch.float64),
-      y_val, NOISE_VALS.to(dtype=torch.float64),
+if not has_saved_artifacts("sqfa"):
+    sqfa_filters, sqfa_times = train_sqfa_repeated(
+        model_factory=lambda: sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=sqfa_noise,
+        ),
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        fit_kwargs=SQFA_FIT_KWARGS,
+        run_label="sqfa training",
     )
-    sqfa_noise = NOISE_VALS[torch.argmax(sqfa_noise_accs)]
-    np.save('filters/sqfa_noise.npy', np.array(sqfa_noise))
-else:
-    sqfa_noise = np.load('filters/sqfa_noise.npy').item()
-
-sqfa_filter_list = []
-sqfa_times = []
-for _rep in range(N_REPS):
-    sqfa_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1], n_filters=N_FILTERS, feature_noise=sqfa_noise,
-    )
-    start = time.time()
-    sqfa_model.fit(x_train, y_train, max_epochs=300, show_progress=False)
-    sqfa_times.append(time.time() - start)
-    sqfa_filter_list.append(sqfa_model.filters.detach().numpy())
-
-np.save('filters/sqfa_filters.npy', np.array(sqfa_filter_list))
-np.save('filters/sqfa_time.npy', np.array(sqfa_times))
+    save_artifacts("sqfa", sqfa_filters, sqfa_times)
 
 
 # ------------------------------
 # Train SQFA-Wasserstein
 # ------------------------------
-if not PRELOAD_VALS:
-    wasserstein_val = sqfa.model.SQFA(
+wasserstein_noise = load_or_validate_noise(
+    noise_path=noise_path("wasserstein"),
+    model_factory=lambda noise: sqfa.model.SQFA(
         n_dim=x_train.shape[1],
         n_filters=N_FILTERS,
-        feature_noise=0,
+        feature_noise=noise,
         distance_fun=sqfa.distances.wasserstein,
-    )
+        constraint="orthogonal",
+    ),
+    x_train=x_train_reg,
+    y_train=y_train_reg,
+    x_val=x_val,
+    y_val=y_val,
+    noise_vals=NOISE_VALS,
+    fit_kwargs=SQFA_FIT_KWARGS,
+    dtypes=(torch.float64,),
+    run_label="wasserstein validation",
+)
 
-    wasserstein_val.to(dtype=torch.float64)
-
-    wasserstein_noise_accs = validate_regularization(
-      wasserstein_val,
-      x_train_reg.to(dtype=torch.float64),
-      y_train_reg,
-      x_val.to(dtype=torch.float64),
-      y_val,
-      NOISE_VALS,
+if not has_saved_artifacts("wasserstein"):
+    wasserstein_filters, wasserstein_times = train_sqfa_repeated(
+        model_factory=lambda: sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=wasserstein_noise,
+            distance_fun=sqfa.distances.wasserstein,
+            constraint="orthogonal",
+        ),
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        fit_kwargs=SQFA_FIT_KWARGS,
+        dtypes=(torch.float64,),
+        run_label="wasserstein training",
     )
-    wasserstein_noise = NOISE_VALS[torch.argmax(wasserstein_noise_accs)]
-    np.save('filters/wasserstein_noise.npy', np.array(wasserstein_noise))
-else:
-    wasserstein_noise = np.load('filters/wasserstein_noise.npy').item()
-
-wasserstein_filter_list = []
-wasserstein_times = []
-for _rep in range(N_REPS):
-    wasserstein_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=wasserstein_noise,
-        distance_fun=sqfa.distances.wasserstein,
-    )
-    wasserstein_model.to(dtype=torch.float64)
-    start = time.time()
-    wasserstein_model.fit(
-        x_train.to(dtype=torch.float64),
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-    )
-    wasserstein_times.append(time.time() - start)
-    wasserstein_filter_list.append(wasserstein_model.filters.detach().to(dtype=torch.float32).numpy())
-
-np.save('filters/wasserstein_filters.npy', np.array(wasserstein_filter_list))
-np.save('filters/wasserstein_time.npy', np.array(wasserstein_times))
+    save_artifacts("wasserstein", wasserstein_filters, wasserstein_times)
 
 
 # ------------------------------
 # Train SQFA-Jeffreys
 # ------------------------------
-if not PRELOAD_VALS:
-    jeffreys_val = sqfa.model.SQFA(
+jeffreys_noise = load_or_validate_noise(
+    noise_path=noise_path("jeffreys"),
+    model_factory=lambda noise: sqfa.model.SQFA(
         n_dim=x_train.shape[1],
         n_filters=N_FILTERS,
-        feature_noise=0,
+        feature_noise=noise,
         distance_fun=sqfa.distances.jeffreys,
-    )
+    ),
+    x_train=x_train_reg,
+    y_train=y_train_reg,
+    x_val=x_val,
+    y_val=y_val,
+    noise_vals=NOISE_VALS,
+    fit_kwargs=SQFA_FIT_KWARGS,
+    run_label="jeffreys validation",
+)
 
-    jeffreys_noise_accs = validate_regularization(
-        jeffreys_val, x_train_reg, y_train_reg, x_val, y_val, NOISE_VALS,
+if not has_saved_artifacts("jeffreys"):
+    jeffreys_filters, jeffreys_times = train_sqfa_repeated(
+        model_factory=lambda: sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=jeffreys_noise,
+            distance_fun=sqfa.distances.jeffreys,
+        ),
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        fit_kwargs=SQFA_FIT_KWARGS,
+        run_label="jeffreys training",
     )
-    jeffreys_noise = NOISE_VALS[torch.argmax(jeffreys_noise_accs)]
-    np.save('filters/jeffreys_noise.npy', np.array(jeffreys_noise))
-else:
-    jeffreys_noise = np.load('filters/jeffreys_noise.npy').item()
-
-jeffreys_filter_list = []
-jeffreys_times = []
-for _rep in range(N_REPS):
-    jeffreys_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=jeffreys_noise,
-        distance_fun=sqfa.distances.jeffreys,
-    )
-    start = time.time()
-    jeffreys_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-    )
-    jeffreys_times.append(time.time() - start)
-    jeffreys_filter_list.append(jeffreys_model.filters.detach().numpy())
-
-np.save('filters/jeffreys_filters.npy', np.array(jeffreys_filter_list))
-np.save('filters/jeffreys_time.npy', np.array(jeffreys_times))
+    save_artifacts("jeffreys", jeffreys_filters, jeffreys_times)
 
 
 # ------------------------------
 # Train LFDA
 # ------------------------------
-n_dim_lfda = 200
-pca_subsample = PCA(n_components=n_dim_lfda)
-pca_subsample.fit(x_train)
-x_transformed = pca_subsample.transform(x_train)
+if not has_saved_artifacts("lfda"):
+    lfda_accs = validate_lfda_k(
+        x_train=x_train,
+        y_train=y_train,
+        k_vals=LFDA_K_VALS,
+        n_filters=N_FILTERS,
+        n_pca_components=LFDA_PCA_DIM,
+        eval_qda_reg=1.0e-5,
+        val_size=0.15,
+        embedding_type=LFDA_EMBEDDING_TYPE,
+    )
+    best_k = int(LFDA_K_VALS[torch.argmax(lfda_accs)].item())
 
-lfda = LFDA(n_components=N_FILTERS, k=7, embedding_type='orthonormalized')
-start = time.time()
-lfda.fit(x_transformed, y_train)
-lfda_time = time.time() - start
-lfda_filters = pca_subsample.inverse_transform(lfda.components_)
-
-np.save('filters/lfda_filters.npy', np.array(lfda_filters))
-np.save('filters/lfda_time.npy', np.array(lfda_time))
+    lfda_filters, lfda_times = train_lfda_repeated(
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        n_filters=N_FILTERS,
+        k=best_k,
+        n_pca_components=LFDA_PCA_DIM,
+        embedding_type=LFDA_EMBEDDING_TYPE,
+        run_label="lfda training",
+    )
+    save_artifacts("lfda", lfda_filters, lfda_times)
 
 
 #############################
@@ -208,13 +233,6 @@ np.save('filters/lfda_time.npy', np.array(lfda_time))
 #
 #############################
 
-filter_names = [
-    'sqfa_filters.npy',
-    'wasserstein_filters.npy',
-    'jeffreys_filters.npy',
-    'lfda_filters.npy',
-]
-
 model_names = [
   "SQFA",
   "SQFA-W",
@@ -222,14 +240,21 @@ model_names = [
   "LFDA",
 ]
 
-model_filters = []
-for name in filter_names:
-    model_filters.append(np.load(f'filters/{name}'))
+model_keys = ["sqfa", "wasserstein", "jeffreys", "lfda"]
+model_filters = [np.load(filter_path(model_key)) for model_key in model_keys]
 
 qda_scores = [
     collect_metric_across_runs(
         filters,
-        lambda filt: qda_accuracy(x_train, y_train, x_test, y_test, filt, noise=0.001).item(),
+        lambda filt: qda_accuracy(
+            x_train,
+            y_train,
+            x_test,
+            y_test,
+            filt,
+            eval_qda_noise=0.00,
+            eval_qda_reg=1.0e-5
+        ).item(),
     )
     for filters in model_filters
 ]

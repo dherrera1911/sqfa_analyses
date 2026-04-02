@@ -7,6 +7,7 @@ import torch
 from metric_learn import LFDA
 from sklearn.base import clone
 from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.pipeline import Pipeline
 from .data import train_val_split
@@ -142,6 +143,76 @@ def load_or_validate_noise(
     best_noise = float(noise_vals[torch.argmax(noise_accs)].item())
     np.save(noise_path, np.asarray(best_noise))
     return best_noise
+
+
+def validate_lda_shrinkage(
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+    shrinkage_vals,
+    n_filters,
+    eval_qda_reg=1.0e-5,
+):
+    """Validate LDA shrinkage values with downstream QDA on a validation split."""
+    shrinkage_vals = np.asarray(shrinkage_vals, dtype=float).reshape(-1)
+    if shrinkage_vals.size == 0:
+        raise ValueError("shrinkage_vals must contain at least one candidate value")
+
+    accuracies = torch.empty(shrinkage_vals.size, dtype=torch.float32)
+    x_train_np = torch.as_tensor(x_train).detach().cpu().numpy()
+    y_train_np = torch.as_tensor(y_train).detach().cpu().numpy()
+
+    for idx, shrinkage in enumerate(shrinkage_vals):
+        lda = LinearDiscriminantAnalysis(
+            solver="eigen",
+            shrinkage=float(shrinkage),
+        )
+        lda.fit(x_train_np, y_train_np)
+        filters = np.asarray(lda.scalings_.T, dtype=np.float32)
+        if filters.shape[0] == 0:
+            accuracies[idx] = float("-inf")
+            continue
+
+        filters = filters[: min(n_filters, filters.shape[0])]
+        accuracies[idx] = qda_accuracy(
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            filters,
+            eval_qda_reg=eval_qda_reg,
+        )
+
+    return accuracies
+
+
+def load_or_validate_lda_shrinkage(
+    shrinkage_path,
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+    shrinkage_vals,
+    n_filters,
+    eval_qda_reg=1.0e-5,
+):
+    """Load a saved LDA shrinkage value or select and cache it."""
+    if os.path.exists(shrinkage_path):
+        return float(np.load(shrinkage_path).item())
+
+    shrinkage_accs = validate_lda_shrinkage(
+        x_train=x_train,
+        y_train=y_train,
+        x_val=x_val,
+        y_val=y_val,
+        shrinkage_vals=shrinkage_vals,
+        n_filters=n_filters,
+        eval_qda_reg=eval_qda_reg,
+    )
+    best_shrinkage = float(shrinkage_vals[int(torch.argmax(shrinkage_accs).item())])
+    np.save(shrinkage_path, np.asarray(best_shrinkage))
+    return best_shrinkage
 
 
 def validate_wda_reg(

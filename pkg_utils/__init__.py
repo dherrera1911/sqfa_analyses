@@ -10,8 +10,10 @@ from .evaluation import (
 )
 from .artifacts import artifact_path, has_saved_artifacts, load_cached_filters, save_training_artifacts
 from .regularization import (
+    load_or_validate_lda_shrinkage,
     load_or_validate_noise,
     load_or_validate_wda_reg,
+    validate_lda_shrinkage,
     validate_lfda_k,
     validate_regularization,
     validate_wda_reg,
@@ -44,6 +46,8 @@ __all__ = [
     "validate_regularization",
     "validate_lfda_k",
     "load_or_validate_noise",
+    "validate_lda_shrinkage",
+    "load_or_validate_lda_shrinkage",
     "validate_wda_reg",
     "load_or_validate_wda_reg",
     "fit_sqfa_adaptive_precision",

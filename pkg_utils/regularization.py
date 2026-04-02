@@ -228,12 +228,21 @@ def validate_wda_reg(
     seed=0,
     sinkhorn_iters=10,
     maxiter=40,
-    sinkhorn_method="sinkhorn",
+    sinkhorn_method="sinkhorn_log",
     solver="steepest",
     normalize=True,
     pca_solver="randomized",
+    gradient_mode="autodiff",
+    sinkhorn_tolerance=1.0e-9,
+    optimizer=None,
+    lr=1.0,
+    lbfgs_max_iter=5,
+    loss_change_tol=1.0e-7,
+    update_mean_each_step=False,
+    dtype=torch.float64,
+    device="cpu",
 ):
-    """Validate POT-WDA entropic regularization values with downstream QDA."""
+    """Validate WDATorch regularization values with downstream QDA."""
     reg_vals = np.asarray(reg_vals, dtype=float).reshape(-1)
     if reg_vals.size == 0:
         raise ValueError("reg_vals must contain at least one candidate value")
@@ -254,6 +263,15 @@ def validate_wda_reg(
             solver=solver,
             normalize=normalize,
             pca_solver=pca_solver,
+            gradient_mode=gradient_mode,
+            sinkhorn_tolerance=sinkhorn_tolerance,
+            optimizer=optimizer,
+            lr=lr,
+            lbfgs_max_iter=lbfgs_max_iter,
+            loss_change_tol=loss_change_tol,
+            update_mean_each_step=update_mean_each_step,
+            dtype=dtype,
+            device=device,
         )
         accuracies[idx] = qda_accuracy(
             x_train,
@@ -280,10 +298,19 @@ def load_or_validate_wda_reg(
     seed=0,
     sinkhorn_iters=10,
     maxiter=40,
-    sinkhorn_method="sinkhorn",
+    sinkhorn_method="sinkhorn_log",
     solver="steepest",
     normalize=True,
     pca_solver="randomized",
+    gradient_mode="autodiff",
+    sinkhorn_tolerance=1.0e-9,
+    optimizer=None,
+    lr=1.0,
+    lbfgs_max_iter=5,
+    loss_change_tol=1.0e-7,
+    update_mean_each_step=False,
+    dtype=torch.float64,
+    device="cpu",
 ):
     """Load a saved WDA regularization value or select and cache it."""
     if os.path.exists(reg_path):
@@ -306,6 +333,15 @@ def load_or_validate_wda_reg(
         solver=solver,
         normalize=normalize,
         pca_solver=pca_solver,
+        gradient_mode=gradient_mode,
+        sinkhorn_tolerance=sinkhorn_tolerance,
+        optimizer=optimizer,
+        lr=lr,
+        lbfgs_max_iter=lbfgs_max_iter,
+        loss_change_tol=loss_change_tol,
+        update_mean_each_step=update_mean_each_step,
+        dtype=dtype,
+        device=device,
     )
     best_reg = float(reg_vals[int(torch.argmax(reg_accs).item())])
     np.save(reg_path, np.asarray(best_reg))

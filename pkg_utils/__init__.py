@@ -28,6 +28,7 @@ from .training import (
 from .suppca import SupervisedPCA
 from .plot import plot_filter_grid, plot_metric_with_errorbars
 from .wda import balanced_subset_indices, fit_wda
+from .wdatorch import WDATorch
 
 
 __all__ = [
@@ -57,6 +58,7 @@ __all__ = [
     "train_lmnn_repeated",
     "fit_wda",
     "balanced_subset_indices",
+    "WDATorch",
     "SupervisedPCA",
     "plot_filter_grid",
     "plot_metric_with_errorbars",

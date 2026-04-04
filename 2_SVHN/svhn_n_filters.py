@@ -32,13 +32,13 @@ from pkg_utils import (
     train_lfda_repeated,
     train_metric_learn_repeated,
     train_sqfa_repeated,
-    train_val_split,
     validate_lfda_k,
+    train_val_split,
 )
 
 
 FILTER_RANGE = (2, 4, 8, 12, 16, 20)
-NOISE_VALS = torch.tensor([0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0])
+NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
 N_REPS = 3
 FILTERS_DIR = "filters_review"
 FIGURES_DIR = "figures_review"
@@ -47,17 +47,15 @@ SQFA_FIT_KWARGS = {"max_epochs": 500, "show_progress": False}
 LDA_SHRINKAGE_VALS = np.array([0.05, 0.1, 0.2, 0.4, 0.8], dtype=float)
 LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
 LFDA_PCA_DIM = 200
-LFDA_EMBEDDING_TYPE = "orthonormalized"
 LMNN_PCA_DIM = 200
 KNN_N_NEIGHBORS = 5
 WASSERSTEIN_DTYPES = (torch.float64,)
-WDA_REG_VALS = np.array([1.0, 5.0, 10.0, 20.0, 50.0], dtype=float)
+WDA_REG_VALS = np.array([0.25, 0.5, 1.0, 2.0, 4.0], dtype=float)
 WDA_PCA_DIM = 100
 WDA_SAMPLES_PER_CLASS = 500
 WDA_SINKHORN_ITERS = 10
 WDA_MAXITER = 100
-WDA_SINKHORN_METHOD = "sinkhorn_log"
-torch.manual_seed(3)
+torch.manual_seed(2)
 
 os.makedirs(FILTERS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -180,14 +178,16 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
 #
 #############################
 
-trainset = torchvision.datasets.MNIST(root="./data", train=True, download=True)
-testset = torchvision.datasets.MNIST(root="./data", train=False, download=True)
+trainset = torchvision.datasets.SVHN(root="./data", split="train", download=True)
+testset = torchvision.datasets.SVHN(root="./data", split="test", download=True)
 
-n_samples, n_row, n_col = trainset.data.shape
-x_train = torch.as_tensor(trainset.data).float().reshape(-1, n_row * n_col)
-y_train = torch.as_tensor(trainset.targets, dtype=torch.long)
-x_test = torch.as_tensor(testset.data).float().reshape(-1, n_row * n_col)
-y_test = torch.as_tensor(testset.targets, dtype=torch.long)
+n_samples, n_channels, n_row, n_col = trainset.data.shape
+x_train = torch.as_tensor(trainset.data).float()
+x_train = x_train.mean(dim=1).reshape(-1, n_row * n_col)
+y_train = torch.as_tensor(trainset.labels, dtype=torch.long)
+x_test = torch.as_tensor(testset.data).float()
+x_test = x_test.mean(dim=1).reshape(-1, n_row * n_col)
+y_test = torch.as_tensor(testset.labels, dtype=torch.long)
 
 x_train, x_test = scale_and_center(x_train, x_test)
 
@@ -206,6 +206,10 @@ x_train_reg, y_train_reg, x_val, y_val = train_val_split(
 
 for n_filters in FILTER_RANGE:
     print(f"Training models with n_filters={n_filters}")
+
+    # ------------------------------
+    # Train SQFA
+    # ------------------------------
 
     sqfa_filter_path = artifact_path(FILTERS_DIR, "sqfa", "filters", n_filters=n_filters)
     sqfa_time_path = artifact_path(FILTERS_DIR, "sqfa", "time", n_filters=n_filters)
@@ -262,9 +266,7 @@ for n_filters in FILTER_RANGE:
         n_filters=n_filters,
     )
 
-    # ------------------------------
-    # Train SQFA
-    # ------------------------------
+    # Get regularization parameter via cross validation
     sqfa_noise = load_or_validate_noise(
         noise_path=sqfa_noise_path,
         model_factory=lambda noise: sqfa.model.SQFA(
@@ -278,7 +280,6 @@ for n_filters in FILTER_RANGE:
         y_val=y_val,
         noise_vals=NOISE_VALS,
         fit_kwargs=SQFA_FIT_KWARGS,
-        dtypes=(torch.float64,),
         run_label=f"sqfa validation for n_filters={n_filters}",
     )
 
@@ -355,7 +356,7 @@ for n_filters in FILTER_RANGE:
         x_val=x_val,
         y_val=y_val,
         noise_vals=NOISE_VALS,
-        fit_kwargs=SQFA_FIT_KWARGS,
+        fit_kwargs={"lr": 0.2, "max_epochs": 500, "show_progress": True},
         run_label=f"bhattacharyya validation for n_filters={n_filters}",
     )
 
@@ -370,7 +371,7 @@ for n_filters in FILTER_RANGE:
             x_train=x_train,
             y_train=y_train,
             n_reps=N_REPS,
-            fit_kwargs=SQFA_FIT_KWARGS,
+            fit_kwargs={"lr": 0.2, "max_epochs": 500, "show_progress": True},
             run_label=f"bhattacharyya training for n_filters={n_filters}",
         )
         save_training_artifacts(
@@ -582,7 +583,6 @@ for n_filters in FILTER_RANGE:
             n_pca_components=LFDA_PCA_DIM,
             eval_qda_reg=1.0e-5,
             val_size=0.15,
-            embedding_type=LFDA_EMBEDDING_TYPE,
         )
         best_k = int(LFDA_K_VALS[torch.argmax(lfda_accs)].item())
         lfda_filters, lfda_times = train_lfda_repeated(
@@ -592,7 +592,6 @@ for n_filters in FILTER_RANGE:
             n_filters=n_filters,
             k=best_k,
             n_pca_components=LFDA_PCA_DIM,
-            embedding_type=LFDA_EMBEDDING_TYPE,
             run_label=f"lfda training for n_filters={n_filters}",
         )
         save_training_artifacts(
@@ -621,16 +620,15 @@ for n_filters in FILTER_RANGE:
         n_pca_components=WDA_PCA_DIM,
         samples_per_class=WDA_SAMPLES_PER_CLASS,
         eval_qda_reg=1.0e-5,
-        seed=3,
+        seed=2,
         sinkhorn_iters=WDA_SINKHORN_ITERS,
-        sinkhorn_method=WDA_SINKHORN_METHOD,
         maxiter=WDA_MAXITER,
     )
     if not has_saved_artifacts(wda_filter_path, wda_time_path):
         wda_filters = []
         wda_times = []
         for rep in range(N_REPS):
-            current_seed = 3 + rep
+            current_seed = 2 + rep
             current_filters, current_time = fit_wda(
                 x_train=x_train,
                 y_train=y_train,
@@ -640,7 +638,6 @@ for n_filters in FILTER_RANGE:
                 samples_per_class=WDA_SAMPLES_PER_CLASS,
                 seed=current_seed,
                 sinkhorn_iters=WDA_SINKHORN_ITERS,
-                sinkhorn_method=WDA_SINKHORN_METHOD,
                 maxiter=WDA_MAXITER,
             )
             wda_filters.append(current_filters)
@@ -674,7 +671,7 @@ for n_filters in FILTER_RANGE:
         lmnn_subset_idx = balanced_subset_indices(
             y_train.detach().cpu().numpy(),
             samples_per_class=WDA_SAMPLES_PER_CLASS,
-            seed=3,
+            seed=2,
         )
         x_transformed_sub = x_transformed[lmnn_subset_idx]
         y_train_sub = y_train[lmnn_subset_idx]
@@ -691,7 +688,7 @@ for n_filters in FILTER_RANGE:
             ),
             x_train=x_train,
             y_train=y_train_sub,
-            n_reps=1,
+            n_reps=1, # With pca init, this is deterministic
             fit_x=x_transformed_sub,
             extract_filters=lambda estimator: pca_subsample.inverse_transform(
                 estimator.components_
@@ -746,14 +743,14 @@ qda_results = summarize_metric_results(
 export_metric_results_csv(
     qda_results,
     "qda",
-    f"{RESULTS_DIR}/mnist_n_filters_qda_review.csv",
+    f"{RESULTS_DIR}/svhn_n_filters_qda_review.csv",
 )
 plot_metric_results(
     model_specs,
     qda_results,
     "QDA Accuracy (%)",
-    f"{FIGURES_DIR}/mnist_accuracies_n_filters_review.pdf",
-    ylim=(40, 100),
+    f"{FIGURES_DIR}/svhn_accuracies_n_filters_review.pdf",
+    ylim=(0, 100),
 )
 
 
@@ -777,12 +774,12 @@ knn_results = summarize_metric_results(
 export_metric_results_csv(
     knn_results,
     "knn",
-    f"{RESULTS_DIR}/mnist_n_filters_knn_review.csv",
+    f"{RESULTS_DIR}/svhn_n_filters_knn_review.csv",
 )
 plot_metric_results(
     model_specs,
     knn_results,
     "KNN Accuracy (%)",
-    f"{FIGURES_DIR}/mnist_accuracies_n_filters_knn_review.pdf",
-    ylim=(40, 100),
+    f"{FIGURES_DIR}/svhn_accuracies_n_filters_knn_review.pdf",
+    ylim=(0, 100),
 )

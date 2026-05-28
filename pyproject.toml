@@ -14,6 +14,9 @@ dependencies = [
     "scikit-learn>=1.8",
     "tqdm>=4.66",
     "pot[dr]>=0.9.6.post1",
+    "pybregman",
+    "pynapple>=0.11.0",
+    "pynwb>=3.1.3",
 ]
 
 [tool.uv]
@@ -24,6 +27,7 @@ metric-learn = { git = "https://github.com/dherrera1911/metric-learn", branch = 
 sqfa = { git = "https://github.com/dherrera1911/sqfa" }
 torch = [{ index = "pytorch-cpu" }]
 torchvision = [{ index = "pytorch-cpu" }]
+pybregman = { git = "https://github.com/alexandersoen/pyBregMan.git" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

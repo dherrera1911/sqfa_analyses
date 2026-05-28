@@ -77,11 +77,46 @@ def make_informative_statistics(
     return means, covariances
 
 
+def embed_statistics_in_ambient_space(
+    means: torch.Tensor,
+    covariances: torch.Tensor,
+    basis: torch.Tensor,
+    null_variance: float = 1.0,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Embed informative statistics into a dense ambient space."""
+    basis = torch.as_tensor(basis, dtype=means.dtype)
+    if basis.ndim != 2:
+        raise ValueError("basis must be a matrix of shape (ambient_dim, informative_dim)")
+    if basis.shape[1] != means.shape[1]:
+        raise ValueError("basis and means must agree on the informative dimensionality")
+
+    ambient_dim = basis.shape[0]
+    n_classes = means.shape[0]
+    projector = basis @ basis.T
+    identity = torch.eye(ambient_dim, dtype=means.dtype)
+    null_covariance = null_variance * (identity - projector)
+
+    embedded_means = means @ basis.T
+    embedded_covariances = torch.empty(
+        n_classes,
+        ambient_dim,
+        ambient_dim,
+        dtype=means.dtype,
+    )
+    for class_idx in range(n_classes):
+        embedded_covariances[class_idx] = (
+            basis @ covariances[class_idx] @ basis.T + null_covariance
+        )
+
+    return embedded_means, embedded_covariances
+
+
 def fit_sqfa_from_statistics(
     means: torch.Tensor,
     covariances: torch.Tensor,
     n_filters: int,
     feature_noise: float,
+    constraint: str = "sphere",
     fit_kwargs: dict | None = None,
     dtypes: tuple[torch.dtype, ...] = (torch.float32, torch.float64),
     seed: int = 0,
@@ -97,6 +132,7 @@ def fit_sqfa_from_statistics(
                 n_dim=means.shape[1],
                 n_filters=n_filters,
                 feature_noise=feature_noise,
+                constraint=constraint,
             ).to(dtype=dtype)
             stats = {
                 "means": means.to(dtype=dtype),
@@ -115,11 +151,18 @@ def fit_sqfa_from_statistics(
     raise last_error
 
 
+def orthonormalize_filters(filters: torch.Tensor) -> torch.Tensor:
+    """Return an orthonormal basis spanning the same filter row space."""
+    filters = torch.as_tensor(filters)
+    q, _ = torch.linalg.qr(filters.T, mode="reduced")
+    return q.T
+
+
 def project_statistics(
     means: torch.Tensor,
     covariances: torch.Tensor,
     filters: torch.Tensor,
-    jitter: float = 1.0e-5,
+    jitter: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Project class statistics into a feature space defined by `filters`."""
     filters = torch.as_tensor(filters, dtype=means.dtype)
@@ -136,9 +179,33 @@ def simulate_qda_accuracy_from_statistics(
     n_train_per_class: int,
     n_test_per_class: int,
     seed: int,
-    qda_reg: float = 1.0e-5,
+    qda_reg: float = 0.0,
 ) -> float:
     """Sample Gaussian data from class statistics and evaluate QDA accuracy."""
+    x_train, y_train, x_test, y_test = sample_qda_dataset_from_statistics(
+        means=means,
+        covariances=covariances,
+        n_train_per_class=n_train_per_class,
+        n_test_per_class=n_test_per_class,
+        seed=seed,
+    )
+    return qda_accuracy_from_samples(
+        x_train=x_train,
+        y_train=y_train,
+        x_test=x_test,
+        y_test=y_test,
+        qda_reg=qda_reg,
+    )
+
+
+def sample_qda_dataset_from_statistics(
+    means: torch.Tensor,
+    covariances: torch.Tensor,
+    n_train_per_class: int,
+    n_test_per_class: int,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Sample one train/test split from the class statistics."""
     generator = torch.Generator().manual_seed(seed)
     n_classes = means.shape[0]
     n_dim = means.shape[1]
@@ -172,13 +239,43 @@ def simulate_qda_accuracy_from_statistics(
     x_test = torch.cat(test_samples).cpu().numpy()
     y_test = torch.cat(test_labels).cpu().numpy()
 
+    return (
+        torch.from_numpy(x_train),
+        torch.from_numpy(y_train),
+        torch.from_numpy(x_test),
+        torch.from_numpy(y_test),
+    )
+
+
+def qda_accuracy_from_samples(
+    x_train: torch.Tensor,
+    y_train: torch.Tensor,
+    x_test: torch.Tensor,
+    y_test: torch.Tensor,
+    filters: torch.Tensor | None = None,
+    qda_reg: float = 0.0,
+) -> float:
+    """Fit scikit-learn QDA on a shared sampled dataset."""
+    x_train = torch.as_tensor(x_train, dtype=torch.float64)
+    x_test = torch.as_tensor(x_test, dtype=torch.float64)
+
+    if filters is not None:
+        filters = torch.as_tensor(filters, dtype=torch.float64)
+        x_train = x_train @ filters.T
+        x_test = x_test @ filters.T
+
+    x_train_np = x_train.detach().cpu().numpy()
+    y_train_np = y_train.detach().cpu().numpy()
+    x_test_np = x_test.detach().cpu().numpy()
+    y_test_np = y_test.detach().cpu().numpy()
+
     qda = QuadraticDiscriminantAnalysis(
         solver="eigen",
         shrinkage=qda_reg,
         tol=1.0e-7,
     )
-    qda.fit(x_train, y_train)
-    return float(qda.score(x_test, y_test))
+    qda.fit(x_train_np, y_train_np)
+    return float(qda.score(x_test_np, y_test_np))
 
 
 def save_csv(rows: list[dict], output_path: Path, fieldnames: list[str]) -> None:

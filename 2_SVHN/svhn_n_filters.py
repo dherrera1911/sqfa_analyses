@@ -37,7 +37,7 @@ from pkg_utils import (
 )
 
 
-FILTER_RANGE = (2, 4, 8, 12, 16, 20)
+FILTER_RANGE = (2, 4, 8, 16)
 NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
 N_REPS = 10
 FILTERS_DIR = "filters_review"
@@ -759,8 +759,8 @@ model_specs = [
     ("SQFA-B", "bhattacharyya"),
     ("LDA", "lda"),
     ("SPCA", "spca"),
-#    ("SQFA-W", "wasserstein"),
-#    ("SQFA-J", "jeffreys"),
+    ("SQFA-W", "wasserstein"),
+    ("SQFA-J", "jeffreys"),
     ("LFDA", "lfda"),
     ("WDA", "wda"),
     ("LMNN", "lmnn"),

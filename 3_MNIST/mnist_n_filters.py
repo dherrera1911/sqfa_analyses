@@ -37,9 +37,9 @@ from pkg_utils import (
 )
 
 
-FILTER_RANGE = (2, 4, 8, 12, 16, 20)
+FILTER_RANGE = (2, 4, 8, 16)
 NOISE_VALS = torch.tensor([0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0])
-N_REPS = 3
+N_REPS = 10
 FILTERS_DIR = "filters_review"
 FIGURES_DIR = "figures_review"
 RESULTS_DIR = "results_review"

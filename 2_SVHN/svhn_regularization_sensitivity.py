@@ -23,7 +23,7 @@ from pkg_utils import (
 
 
 N_FILTERS = 9
-NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
+NOISE_VALS = torch.tensor([0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
 N_REPS = 3
 FILTERS_DIR = "filters_regularization"
 FIGURES_DIR = "figures_review"
@@ -116,11 +116,18 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
     """Plot test accuracy versus regularization value."""
     colors = plt.get_cmap("tab10")(np.arange(len(model_specs)))
     fig, ax = plt.subplots(figsize=(6, 3.5))
+    if len(model_specs) > 1:
+        jitter_scales = np.geomspace(10 ** (-0.02), 10 ** 0.02, len(model_specs))
+    else:
+        jitter_scales = np.array([1.0])
 
-    for color, (model_name, model_key, _model_factory, _dtypes, _fit_kwargs) in zip(
-        colors,
-        model_specs,
-    ):
+    for jitter_scale, color, (
+        model_name,
+        model_key,
+        _model_factory,
+        _dtypes,
+        _fit_kwargs,
+    ) in zip(jitter_scales, colors, model_specs):
         model_results = [
             result for result in metric_results if result["model_key"] == model_key
         ]
@@ -129,11 +136,23 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
 
         model_results = sorted(model_results, key=lambda result: result["regularization"])
         x_vals = [result["regularization"] for result in model_results]
+        x_vals = np.asarray(x_vals, dtype=float) * jitter_scale
         medians = [result["median_percent"] for result in model_results]
         q25_vals = [result["q25_percent"] for result in model_results]
         q75_vals = [result["q75_percent"] for result in model_results]
 
-        ax.plot(x_vals, medians, color=color, marker="o", linewidth=2, label=model_name)
+        ax.plot(
+            x_vals,
+            medians,
+            color=color,
+            marker="o",
+            linewidth=2,
+            label=model_name,
+            markersize=7,
+            markerfacecolor=(*color[:3], 0.35),
+            markeredgecolor=(*color[:3], 0.6),
+            markeredgewidth=1.0,
+        )
         ax.fill_between(x_vals, q25_vals, q75_vals, color=color, alpha=0.15)
 
     ax.set_xscale("log")
@@ -180,13 +199,12 @@ x_train, x_test = scale_and_center(x_train, x_test)
 
 model_specs = [
     (
-        "SQFA-B",
-        "bhattacharyya",
+        "SQFA",
+        "sqfa",
         lambda noise: sqfa.model.SQFA(
             n_dim=x_train.shape[1],
             n_filters=N_FILTERS,
             feature_noise=noise,
-            distance_fun=sqfa.distances.bhattacharyya,
         ),
         (torch.float32, torch.float64),
         SQFA_FIT_KWARGS,
@@ -199,6 +217,18 @@ model_specs = [
             n_filters=N_FILTERS,
             feature_noise=noise,
             distance_fun=sqfa.distances.hellinger,
+        ),
+        (torch.float32, torch.float64),
+        SQFA_FIT_KWARGS,
+    ),
+    (
+        "SQFA-B",
+        "bhattacharyya",
+        lambda noise: sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=noise,
+            distance_fun=sqfa.distances.bhattacharyya,
         ),
         (torch.float32, torch.float64),
         SQFA_FIT_KWARGS,
@@ -224,17 +254,6 @@ model_specs = [
             n_filters=N_FILTERS,
             feature_noise=noise,
             distance_fun=sqfa.distances.jeffreys,
-        ),
-        (torch.float32, torch.float64),
-        SQFA_FIT_KWARGS,
-    ),
-    (
-        "SQFA",
-        "sqfa",
-        lambda noise: sqfa.model.SQFA(
-            n_dim=x_train.shape[1],
-            n_filters=N_FILTERS,
-            feature_noise=noise,
         ),
         (torch.float32, torch.float64),
         SQFA_FIT_KWARGS,

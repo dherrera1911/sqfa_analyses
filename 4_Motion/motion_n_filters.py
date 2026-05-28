@@ -65,7 +65,7 @@ LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
 LFDA_PCA_DIM = 100
 LFDA_EMBEDDING_TYPE = "orthonormalized"
 LMNN_PCA_DIM = 200
-KNN_N_NEIGHBORS = 5
+KNN_N_NEIGHBORS = 7
 WASSERSTEIN_DTYPES = (torch.float64,)
 WDA_REG_VALS = np.array([1.0, 5.0, 10.0, 20.0, 50.0], dtype=float)
 WDA_PCA_DIM = 50
@@ -205,8 +205,16 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
     """Plot median performance with interquartile bands."""
     colors = plt.get_cmap("tab10")(np.arange(len(model_specs)))
     fig, ax = plt.subplots(figsize=(7.5, 3.5))
+    if len(model_specs) > 1:
+        jitter_offsets = np.linspace(-0.18, 0.18, len(model_specs))
+    else:
+        jitter_offsets = np.array([0.0])
 
-    for color, (model_name, model_key) in zip(colors, model_specs):
+    for jitter_offset, color, (model_name, model_key) in zip(
+        jitter_offsets,
+        colors,
+        model_specs,
+    ):
         model_results = [
             result for result in metric_results if result["model_key"] == model_key
         ]
@@ -214,11 +222,23 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
             continue
 
         x_vals = [result["n_filters"] for result in model_results]
+        x_vals = np.asarray(x_vals, dtype=float) + jitter_offset
         medians = [result["median_percent"] for result in model_results]
         q25_vals = [result["q25_percent"] for result in model_results]
         q75_vals = [result["q75_percent"] for result in model_results]
 
-        ax.plot(x_vals, medians, color=color, marker="o", linewidth=2, label=model_name)
+        ax.plot(
+            x_vals,
+            medians,
+            color=color,
+            marker="o",
+            linewidth=2,
+            label=model_name,
+            markersize=7,
+            markerfacecolor=(*color[:3], 0.35),
+            markeredgecolor=(*color[:3], 0.6),
+            markeredgewidth=1.0,
+        )
         ax.fill_between(x_vals, q25_vals, q75_vals, color=color, alpha=0.15)
 
     ax.set_xlabel("Number of Filters", fontsize=12)
@@ -759,7 +779,7 @@ model_specs = [
     ("SQFA-H", "hellinger"),
     ("LDA", "lda"),
     ("SPCA", "spca"),
-    #("SQFA-B", "bhattacharyya"),
+    ("SQFA-B", "bhattacharyya"),
 #    ("SQFA-W", "wasserstein"),
 #    ("SQFA-J", "jeffreys"),
     ("LFDA", "lfda"),

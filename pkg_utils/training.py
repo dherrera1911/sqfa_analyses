@@ -9,6 +9,24 @@ from metric_learn import LFDA, LMNN
 from .pca import fit_preprocessing_pca, lift_filters_from_pca, transform_with_pca
 
 
+def cast_fit_kwargs_for_dtype(value, dtype):
+    """Recursively cast tensor-valued fit kwargs to the target dtype."""
+    if torch.is_tensor(value):
+        return value.to(dtype=dtype)
+    if isinstance(value, dict):
+        return {
+            key: cast_fit_kwargs_for_dtype(current_value, dtype)
+            for key, current_value in value.items()
+        }
+    if isinstance(value, list):
+        return [cast_fit_kwargs_for_dtype(current_value, dtype) for current_value in value]
+    if isinstance(value, tuple):
+        return tuple(
+            cast_fit_kwargs_for_dtype(current_value, dtype) for current_value in value
+        )
+    return value
+
+
 def fit_sqfa_adaptive_precision(
     model_factory,
     x_train,
@@ -26,9 +44,10 @@ def fit_sqfa_adaptive_precision(
             model = model_factory()
             x_fit = x_train.to(dtype=dtype)
             model = model.to(dtype=dtype)
+            current_fit_kwargs = cast_fit_kwargs_for_dtype(fit_kwargs, dtype)
 
             start = time.time()
-            model.fit(x_fit, y_train, **fit_kwargs)
+            model.fit(x_fit, y_train, **current_fit_kwargs)
             return model, time.time() - start, dtype
         except Exception as exc:
             last_error = exc

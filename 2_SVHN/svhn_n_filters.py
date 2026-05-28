@@ -39,7 +39,7 @@ from pkg_utils import (
 
 FILTER_RANGE = (2, 4, 8, 12, 16, 20)
 NOISE_VALS = torch.tensor([0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0])
-N_REPS = 3
+N_REPS = 10
 FILTERS_DIR = "filters_review"
 FIGURES_DIR = "figures_review"
 RESULTS_DIR = "results_review"
@@ -69,12 +69,23 @@ def _to_float(value):
     return float(value)
 
 
-def summarize_metric_results(model_specs, score_fn):
+def max_supported_filter_count(filter_range, max_rank):
+    """Return the largest requested filter count supported by a model rank."""
+    valid_counts = [n_filters for n_filters in filter_range if n_filters <= max_rank]
+    return max(valid_counts, default=0)
+
+
+def summarize_metric_results(model_specs, score_fn, model_max_filters=None):
     """Summarize per-model metric values across filter counts."""
+    model_max_filters = {} if model_max_filters is None else dict(model_max_filters)
     results = []
 
     for model_name, model_key in model_specs:
+        max_filters = model_max_filters.get(model_key)
         for n_filters in FILTER_RANGE:
+            if max_filters is not None and n_filters > max_filters:
+                continue
+
             current_filter_path = artifact_path(
                 FILTERS_DIR,
                 model_key,
@@ -140,8 +151,16 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
     """Plot median performance with interquartile bands."""
     colors = plt.get_cmap("tab10")(np.arange(len(model_specs)))
     fig, ax = plt.subplots(figsize=(7.5, 3.5))
+    if len(model_specs) > 1:
+        jitter_offsets = np.linspace(-0.18, 0.18, len(model_specs))
+    else:
+        jitter_offsets = np.array([0.0])
 
-    for color, (model_name, model_key) in zip(colors, model_specs):
+    for jitter_offset, color, (model_name, model_key) in zip(
+        jitter_offsets,
+        colors,
+        model_specs,
+    ):
         model_results = [
             result for result in metric_results if result["model_key"] == model_key
         ]
@@ -149,11 +168,23 @@ def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
             continue
 
         x_vals = [result["n_filters"] for result in model_results]
+        x_vals = np.asarray(x_vals, dtype=float) + jitter_offset
         medians = [result["median_percent"] for result in model_results]
         q25_vals = [result["q25_percent"] for result in model_results]
         q75_vals = [result["q75_percent"] for result in model_results]
 
-        ax.plot(x_vals, medians, color=color, marker="o", linewidth=2, label=model_name)
+        ax.plot(
+            x_vals,
+            medians,
+            color=color,
+            marker="o",
+            linewidth=2,
+            label=model_name,
+            markersize=7,
+            markerfacecolor=(*color[:3], 0.35),
+            markeredgecolor=(*color[:3], 0.6),
+            markeredgewidth=1.0,
+        )
         ax.fill_between(x_vals, q25_vals, q75_vals, color=color, alpha=0.15)
 
     ax.set_xlabel("Number of Filters", fontsize=12)
@@ -190,6 +221,8 @@ x_test = x_test.mean(dim=1).reshape(-1, n_row * n_col)
 y_test = torch.as_tensor(testset.labels, dtype=torch.long)
 
 x_train, x_test = scale_and_center(x_train, x_test)
+N_CLASSES = int(torch.unique(y_train).numel())
+MAX_LDA_FILTERS = max_supported_filter_count(FILTER_RANGE, N_CLASSES - 1)
 
 x_train_reg, y_train_reg, x_val, y_val = train_val_split(
     x_train,
@@ -531,43 +564,49 @@ for n_filters in FILTER_RANGE:
     # ------------------------------
     # Train LDA
     # ------------------------------
-    lda_shrinkage = load_or_validate_lda_shrinkage(
-        shrinkage_path=lda_shrinkage_path,
-        x_train=x_train_reg,
-        y_train=y_train_reg,
-        x_val=x_val,
-        y_val=y_val,
-        shrinkage_vals=LDA_SHRINKAGE_VALS,
-        n_filters=n_filters,
-        eval_qda_reg=1.0e-5,
-    )
-    if not has_saved_artifacts(lda_filter_path, lda_time_path):
-        lda = LinearDiscriminantAnalysis(
-            solver="eigen",
-            shrinkage=lda_shrinkage,
+    if n_filters > MAX_LDA_FILTERS:
+        print(
+            f"Skipping LDA for n_filters={n_filters}: "
+            f"supported maximum is {MAX_LDA_FILTERS}."
         )
-        start = time.time()
-        lda.fit(x_train, y_train)
-        lda_time = time.time() - start
-
-        lda_filters = lda.scalings_.T
-        if lda_filters.shape[0] < n_filters:
-            print(
-                f"Skipping LDA save for n_filters={n_filters}: "
-                f"only {lda_filters.shape[0]} filters are available."
-            )
-        else:
-            save_training_artifacts(
-                lda_filter_path,
-                lda_time_path,
-                lda_filters[:n_filters],
-                lda_time,
-            )
     else:
-        load_cached_filters(
-            lda_filter_path,
-            description=f"lda filters for n_filters={n_filters}",
+        lda_shrinkage = load_or_validate_lda_shrinkage(
+            shrinkage_path=lda_shrinkage_path,
+            x_train=x_train_reg,
+            y_train=y_train_reg,
+            x_val=x_val,
+            y_val=y_val,
+            shrinkage_vals=LDA_SHRINKAGE_VALS,
+            n_filters=n_filters,
+            eval_qda_reg=1.0e-5,
         )
+        if not has_saved_artifacts(lda_filter_path, lda_time_path):
+            lda = LinearDiscriminantAnalysis(
+                solver="eigen",
+                shrinkage=lda_shrinkage,
+            )
+            start = time.time()
+            lda.fit(x_train, y_train)
+            lda_time = time.time() - start
+
+            lda_filters = lda.scalings_.T[:MAX_LDA_FILTERS]
+            if lda_filters.shape[0] < n_filters:
+                print(
+                    f"Skipping LDA save for n_filters={n_filters}: "
+                    f"only {lda_filters.shape[0]} filters are available."
+                )
+            else:
+                save_training_artifacts(
+                    lda_filter_path,
+                    lda_time_path,
+                    lda_filters[:n_filters],
+                    lda_time,
+                )
+        else:
+            load_cached_filters(
+                lda_filter_path,
+                description=f"lda filters for n_filters={n_filters}",
+            )
 
     # ------------------------------
     # Train LFDA
@@ -588,7 +627,7 @@ for n_filters in FILTER_RANGE:
         lfda_filters, lfda_times = train_lfda_repeated(
             x_train=x_train,
             y_train=y_train,
-            n_reps=N_REPS,
+            n_reps=1,
             n_filters=n_filters,
             k=best_k,
             n_pca_components=LFDA_PCA_DIM,
@@ -717,9 +756,9 @@ for n_filters in FILTER_RANGE:
 model_specs = [
     ("SQFA", "sqfa"),
     ("SQFA-H", "hellinger"),
+    ("SQFA-B", "bhattacharyya"),
     ("LDA", "lda"),
     ("SPCA", "spca"),
-    #("SQFA-B", "bhattacharyya"),
 #    ("SQFA-W", "wasserstein"),
 #    ("SQFA-J", "jeffreys"),
     ("LFDA", "lfda"),
@@ -739,6 +778,7 @@ qda_results = summarize_metric_results(
         eval_qda_noise=0.0,
         eval_qda_reg=1.0e-5,
     ),
+    model_max_filters={"lda": MAX_LDA_FILTERS},
 )
 export_metric_results_csv(
     qda_results,
@@ -770,6 +810,7 @@ knn_results = summarize_metric_results(
         filt,
         n_neighbors=KNN_N_NEIGHBORS,
     ),
+    model_max_filters={"lda": MAX_LDA_FILTERS},
 )
 export_metric_results_csv(
     knn_results,

@@ -9,6 +9,12 @@ from .evaluation import (
     collect_metric_across_runs,
 )
 from .artifacts import artifact_path, has_saved_artifacts, load_cached_filters, save_training_artifacts
+from .n_filters import (
+    export_metric_results_csv,
+    max_supported_filter_count,
+    plot_metric_results,
+    summarize_metric_results,
+)
 from .regularization import (
     load_or_validate_lda_shrinkage,
     load_or_validate_noise,
@@ -44,6 +50,10 @@ __all__ = [
     "load_cached_filters",
     "has_saved_artifacts",
     "save_training_artifacts",
+    "export_metric_results_csv",
+    "max_supported_filter_count",
+    "plot_metric_results",
+    "summarize_metric_results",
     "validate_regularization",
     "validate_lfda_k",
     "load_or_validate_noise",

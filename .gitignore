@@ -6,7 +6,6 @@ README.md
 *.swp
 __pycache__/
 *figures*
-*filters*
 *data*
 *.pdf
 *.npy

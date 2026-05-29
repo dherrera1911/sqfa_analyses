@@ -1,9 +1,7 @@
-import csv
 import os
 import sys
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from metric_learn import LMNN
@@ -23,15 +21,17 @@ sys.path.append("..")  # Add parent directory to path
 from pkg_utils import (
     artifact_path,
     balanced_subset_indices,
-    collect_metric_across_runs,
+    export_metric_results_csv,
     fit_wda,
     has_saved_artifacts,
     knn_accuracy,
     load_cached_filters,
     load_or_validate_lda_shrinkage,
     load_or_validate_wda_reg,
+    plot_metric_results,
     qda_accuracy,
     save_training_artifacts,
+    summarize_metric_results,
     SupervisedPCA,
     train_lfda_repeated,
     train_metric_learn_repeated,
@@ -44,7 +44,7 @@ from pkg_utils import (
 FILTER_RANGE = (2, 4, 6, 8)
 RESPONSE_NOISE = 0.001
 C50 = 0.8
-N_REPS = 3
+N_REPS = 10
 FILTERS_DIR = os.path.join(SCRIPT_DIR, "filters_review")
 FIGURES_DIR = os.path.join(SCRIPT_DIR, "figures_review")
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results_review")
@@ -79,13 +79,6 @@ torch.manual_seed(2)
 os.makedirs(FILTERS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
-
-
-def _to_float(value):
-    """Convert scalar tensor-like outputs to plain floats."""
-    if hasattr(value, "item"):
-        return float(value.item())
-    return float(value)
 
 
 def ensure_fixed_scalar(path, value, description):
@@ -134,129 +127,6 @@ def train_ama_repeated(x_train, y_train, n_filters, n_reps, fit_kwargs, run_labe
     return np.asarray(filters), np.asarray(times)
 
 
-def summarize_metric_results(model_specs, score_fn):
-    """Summarize per-model metric values across filter counts."""
-    results = []
-
-    for model_name, model_key in model_specs:
-        for n_filters in FILTER_RANGE:
-            current_filter_path = artifact_path(
-                FILTERS_DIR,
-                model_key,
-                "filters",
-                n_filters=n_filters,
-            )
-            if not os.path.exists(current_filter_path):
-                continue
-
-            filters = np.load(current_filter_path)
-            scores = collect_metric_across_runs(
-                filters,
-                lambda filt: _to_float(score_fn(filt)),
-            )
-            scores = np.asarray(scores, dtype=float) * 100.0
-            median = float(np.median(scores))
-            if scores.size > 1:
-                q25, q75 = np.percentile(scores, [25, 75])
-            else:
-                q25 = median
-                q75 = median
-
-            results.append(
-                {
-                    "model_name": model_name,
-                    "model_key": model_key,
-                    "n_filters": int(n_filters),
-                    "n_runs": int(scores.size),
-                    "mean_percent": float(np.mean(scores)),
-                    "std_percent": float(np.std(scores)),
-                    "median_percent": median,
-                    "q25_percent": float(q25),
-                    "q75_percent": float(q75),
-                }
-            )
-
-    return results
-
-
-def export_metric_results_csv(metric_results, metric_name, output_path):
-    """Write summarized metric results to CSV."""
-    fieldnames = [
-        "metric",
-        "model_name",
-        "model_key",
-        "n_filters",
-        "n_runs",
-        "mean_percent",
-        "std_percent",
-        "median_percent",
-        "q25_percent",
-        "q75_percent",
-    ]
-
-    with open(output_path, "w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for result in metric_results:
-            writer.writerow({"metric": metric_name, **result})
-
-
-def plot_metric_results(model_specs, metric_results, ylabel, output_path, ylim):
-    """Plot median performance with interquartile bands."""
-    colors = plt.get_cmap("tab10")(np.arange(len(model_specs)))
-    fig, ax = plt.subplots(figsize=(7.5, 3.5))
-    if len(model_specs) > 1:
-        jitter_offsets = np.linspace(-0.18, 0.18, len(model_specs))
-    else:
-        jitter_offsets = np.array([0.0])
-
-    for jitter_offset, color, (model_name, model_key) in zip(
-        jitter_offsets,
-        colors,
-        model_specs,
-    ):
-        model_results = [
-            result for result in metric_results if result["model_key"] == model_key
-        ]
-        if not model_results:
-            continue
-
-        x_vals = [result["n_filters"] for result in model_results]
-        x_vals = np.asarray(x_vals, dtype=float) + jitter_offset
-        medians = [result["median_percent"] for result in model_results]
-        q25_vals = [result["q25_percent"] for result in model_results]
-        q75_vals = [result["q75_percent"] for result in model_results]
-
-        ax.plot(
-            x_vals,
-            medians,
-            color=color,
-            marker="o",
-            linewidth=2,
-            label=model_name,
-            markersize=7,
-            markerfacecolor=(*color[:3], 0.35),
-            markeredgecolor=(*color[:3], 0.6),
-            markeredgewidth=1.0,
-        )
-        ax.fill_between(x_vals, q25_vals, q75_vals, color=color, alpha=0.15)
-
-    ax.set_xlabel("Number of Filters", fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_xticks(FILTER_RANGE)
-    ax.set_ylim(*ylim)
-    ax.grid(alpha=0.3, linestyle="--")
-    ax.legend(
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        frameon=False,
-        fontsize=10,
-    )
-    fig.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
-    fig.savefig(output_path, bbox_inches="tight")
-    plt.close(fig)
-
-
 #############################
 #
 # LOAD AND PROCESS DATA
@@ -290,6 +160,9 @@ for n_filters in FILTER_RANGE:
     sqfa_filter_path = artifact_path(FILTERS_DIR, "sqfa", "filters", n_filters=n_filters)
     sqfa_time_path = artifact_path(FILTERS_DIR, "sqfa", "time", n_filters=n_filters)
     sqfa_noise_path = artifact_path(FILTERS_DIR, "sqfa", "noise", n_filters=n_filters)
+    smsqfa_filter_path = artifact_path(FILTERS_DIR, "smsqfa", "filters", n_filters=n_filters)
+    smsqfa_time_path = artifact_path(FILTERS_DIR, "smsqfa", "time", n_filters=n_filters)
+    smsqfa_noise_path = artifact_path(FILTERS_DIR, "smsqfa", "noise", n_filters=n_filters)
     pca_filter_path = artifact_path(FILTERS_DIR, "pca", "filters", n_filters=n_filters)
     pca_time_path = artifact_path(FILTERS_DIR, "pca", "time", n_filters=n_filters)
     spca_filter_path = artifact_path(FILTERS_DIR, "spca", "filters", n_filters=n_filters)
@@ -349,6 +222,11 @@ for n_filters in FILTER_RANGE:
         RESPONSE_NOISE,
         f"sqfa noise for n_filters={n_filters}",
     )
+    smsqfa_noise = ensure_fixed_scalar(
+        smsqfa_noise_path,
+        RESPONSE_NOISE,
+        f"smsqfa noise for n_filters={n_filters}",
+    )
     bhattacharyya_noise = ensure_fixed_scalar(
         bhattacharyya_noise_path,
         RESPONSE_NOISE,
@@ -396,6 +274,34 @@ for n_filters in FILTER_RANGE:
         load_cached_filters(
             sqfa_filter_path,
             description=f"sqfa filters for n_filters={n_filters}",
+        )
+
+    # ------------------------------
+    # Train smSQFA
+    # ------------------------------
+    if not has_saved_artifacts(smsqfa_filter_path, smsqfa_time_path):
+        smsqfa_filters, smsqfa_times = train_sqfa_repeated(
+            model_factory=lambda: sqfa.model.SecondMomentsSQFA(
+                n_dim=x_train.shape[1],
+                n_filters=n_filters,
+                feature_noise=smsqfa_noise,
+            ),
+            x_train=x_train,
+            y_train=y_train,
+            n_reps=N_REPS,
+            fit_kwargs=SQFA_FIT_KWARGS,
+            run_label=f"smsqfa training for n_filters={n_filters}",
+        )
+        save_training_artifacts(
+            smsqfa_filter_path,
+            smsqfa_time_path,
+            smsqfa_filters,
+            smsqfa_times,
+        )
+    else:
+        load_cached_filters(
+            smsqfa_filter_path,
+            description=f"smsqfa filters for n_filters={n_filters}",
         )
 
     # ------------------------------
@@ -776,21 +682,24 @@ for n_filters in FILTER_RANGE:
 
 model_specs = [
     ("SQFA", "sqfa"),
+    ("smSQFA", "smsqfa"),
     ("SQFA-H", "hellinger"),
-    ("LDA", "lda"),
-    ("SPCA", "spca"),
     ("SQFA-B", "bhattacharyya"),
     ("SQFA-W", "wasserstein"),
     ("SQFA-J", "jeffreys"),
+    ("AMA", "ama"),
+    ("LDA", "lda"),
+    ("SPCA", "spca"),
     ("LFDA", "lfda"),
     ("WDA", "wda"),
     ("LMNN", "lmnn"),
     ("PCA", "pca"),
-    ("AMA", "ama"),
 ]
 
 qda_results = summarize_metric_results(
     model_specs,
+    FILTER_RANGE,
+    FILTERS_DIR,
     lambda filt: qda_accuracy(
         x_train,
         y_train,
@@ -808,6 +717,7 @@ export_metric_results_csv(
 )
 plot_metric_results(
     model_specs,
+    FILTER_RANGE,
     qda_results,
     "QDA Accuracy (%)",
     os.path.join(FIGURES_DIR, "motion_accuracies_n_filters_review.pdf"),
@@ -823,6 +733,8 @@ plot_metric_results(
 
 knn_results = summarize_metric_results(
     model_specs,
+    FILTER_RANGE,
+    FILTERS_DIR,
     lambda filt: knn_accuracy(
         x_train,
         y_train,
@@ -839,6 +751,7 @@ export_metric_results_csv(
 )
 plot_metric_results(
     model_specs,
+    FILTER_RANGE,
     knn_results,
     "KNN Accuracy (%)",
     os.path.join(FIGURES_DIR, "motion_accuracies_n_filters_knn_review.pdf"),

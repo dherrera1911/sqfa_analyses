@@ -14,13 +14,17 @@ sys.path.append("..")
 
 from pkg_utils import artifact_path, scale_and_center
 from pkg_utils.fisher_rao import (
+    compute_calvo_oller_matrix,
     compute_mean_true_fisher_rao,
     mean_pairwise_distance,
+    plot_calvo_oller_vs_fisher_rao,
+    save_pairwise_distance_csv,
     select_cached_filter_set,
 )
 
 
 FILTER_RANGE = (2, 4, 8, 16)
+CALVO_OLLER_N_FILTERS = 8
 METHOD_SPECS = (
     ("sqfa", "sqfa"),
     ("hellinger", "hellinger"),
@@ -32,8 +36,10 @@ METHOD_SPECS = (
 )
 FILTERS_DIR = os.path.join(SCRIPT_DIR, "filters_review")
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results_true_FR_n_filters")
+FIGURES_DIR = os.path.join(SCRIPT_DIR, "figures_review")
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
 def save_summary_csv(summary_rows, output_path):
@@ -124,4 +130,61 @@ for n_filters in FILTER_RANGE:
 save_summary_csv(
     summary_rows,
     os.path.join(RESULTS_DIR, "mean_fisherrao_by_n_filters.csv"),
+)
+
+
+print(
+    f"Computing SQFA Calvo-Oller distances for n_filters={CALVO_OLLER_N_FILTERS}"
+)
+sqfa_filter_path = artifact_path(
+    FILTERS_DIR,
+    "sqfa",
+    "filters",
+    n_filters=CALVO_OLLER_N_FILTERS,
+)
+sqfa_noise_path = artifact_path(
+    FILTERS_DIR,
+    "sqfa",
+    "noise",
+    n_filters=CALVO_OLLER_N_FILTERS,
+)
+sqfa_filters = select_cached_filter_set(np.load(sqfa_filter_path), run_idx=0)
+sqfa_noise = float(np.load(sqfa_noise_path).item())
+
+sqfa_fisher_rao_matrix, _mean_distance = compute_mean_true_fisher_rao(
+    class_stats=class_stats,
+    filters=sqfa_filters,
+    covariance_noise=sqfa_noise,
+)
+np.save(
+    artifact_path(
+        RESULTS_DIR,
+        "sqfa",
+        "fisherrao_matrix",
+        n_filters=CALVO_OLLER_N_FILTERS,
+    ),
+    sqfa_fisher_rao_matrix,
+)
+calvo_oller_matrix = compute_calvo_oller_matrix(
+    class_stats=class_stats,
+    filters=sqfa_filters,
+    covariance_noise=sqfa_noise,
+)
+
+save_pairwise_distance_csv(
+    fisher_rao_matrix=sqfa_fisher_rao_matrix,
+    calvo_oller_matrix=calvo_oller_matrix,
+    output_path=os.path.join(
+        RESULTS_DIR,
+        f"svhn_sqfa_calvo_oller_pairwise_n{CALVO_OLLER_N_FILTERS}.csv",
+    ),
+    extra_fields={"n_filters": CALVO_OLLER_N_FILTERS},
+)
+plot_calvo_oller_vs_fisher_rao(
+    fisher_rao_matrix=sqfa_fisher_rao_matrix,
+    calvo_oller_matrix=calvo_oller_matrix,
+    output_path=os.path.join(
+        FIGURES_DIR,
+        f"svhn_sqfa_calvo_oller_vs_fisherrao_n{CALVO_OLLER_N_FILTERS}.pdf",
+    ),
 )

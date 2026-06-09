@@ -25,6 +25,7 @@ from pkg_utils import (
     plot_metric_with_errorbars,
     qda_accuracy,
     qda_accuracy_gaussian,
+    train_sqfa_repeated,
 )
 
 
@@ -87,142 +88,225 @@ np.save('filters/spca_time.npy', np.array(spca_time))
 # ------------------------------
 # Train smSQFA
 # ------------------------------
-smsqfa_filters, smsqfa_times = [], []
-for rep in range(N_REPS):
-    torch.manual_seed(2 + rep)
-    smsqfa_model = sqfa.model.SecondMomentsSQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=RESPONSE_NOISE,
-    )
-    start = time.time()
-    smsqfa_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-        pairwise=True,
-        estimator="empirical",
-    )
-    smsqfa_times.append(time.time() - start)
-    smsqfa_filters.append(smsqfa_model.filters.detach().cpu().numpy())
-np.save('filters/smsqfa_filters.npy', np.array(smsqfa_filters))
-np.save('filters/smsqfa_time.npy', np.array(smsqfa_times))
+if not (
+    os.path.exists('filters/smsqfa_filters.npy')
+    and os.path.exists('filters/smsqfa_time.npy')
+):
+    smsqfa_filters, smsqfa_times = [], []
+    for rep in range(N_REPS):
+        torch.manual_seed(2 + rep)
+        smsqfa_model = sqfa.model.SecondMomentsSQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+        )
+        start = time.time()
+        smsqfa_model.fit(
+            x_train,
+            y_train,
+            max_epochs=300,
+            show_progress=False,
+            pairwise=True,
+            estimator="empirical",
+        )
+        smsqfa_times.append(time.time() - start)
+        smsqfa_filters.append(smsqfa_model.filters.detach().cpu().numpy())
+    np.save('filters/smsqfa_filters.npy', np.array(smsqfa_filters))
+    np.save('filters/smsqfa_time.npy', np.array(smsqfa_times))
 
 
 # ------------------------------
 # Train SQFA
 # ------------------------------
-sqfa_filters, sqfa_times = [], []
-for rep in range(N_REPS):
-    torch.manual_seed(102 + rep)
-    sqfa_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=RESPONSE_NOISE,
-    )
-    start = time.time()
-    sqfa_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-        pairwise=True,
-        estimator="empirical",
-    )
-    sqfa_times.append(time.time() - start)
-    sqfa_filters.append(sqfa_model.filters.detach().cpu().numpy())
-np.save('filters/sqfa_filters.npy', np.array(sqfa_filters))
-np.save('filters/sqfa_time.npy', np.array(sqfa_times))
+if not (
+    os.path.exists('filters/sqfa_filters.npy')
+    and os.path.exists('filters/sqfa_time.npy')
+):
+    sqfa_filters, sqfa_times = [], []
+    for rep in range(N_REPS):
+        torch.manual_seed(102 + rep)
+        sqfa_model = sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+        )
+        start = time.time()
+        sqfa_model.fit(
+            x_train,
+            y_train,
+            max_epochs=300,
+            show_progress=False,
+            pairwise=True,
+            estimator="empirical",
+        )
+        sqfa_times.append(time.time() - start)
+        sqfa_filters.append(sqfa_model.filters.detach().cpu().numpy())
+    np.save('filters/sqfa_filters.npy', np.array(sqfa_filters))
+    np.save('filters/sqfa_time.npy', np.array(sqfa_times))
 
 
 # ------------------------------
 # Train Bhattacharyya
 # ------------------------------
-bhattacharyya_filters, bhattacharyya_times = [], []
-for rep in range(N_REPS):
-    torch.manual_seed(202 + rep)
-    bhattacharyya_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=RESPONSE_NOISE,
-        distance_fun=sqfa.distances.bhattacharyya,
-    )
-    start = time.time()
-    bhattacharyya_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-        pairwise=True,
-        estimator="empirical",
-    )
-    bhattacharyya_times.append(time.time() - start)
-    bhattacharyya_filters.append(
-        bhattacharyya_model.filters.detach().cpu().numpy()
-    )
-np.save('filters/bhattacharyya_filters.npy', np.array(bhattacharyya_filters))
-np.save('filters/bhattacharyya_time.npy', np.array(bhattacharyya_times))
+if not (
+    os.path.exists('filters/bhattacharyya_filters.npy')
+    and os.path.exists('filters/bhattacharyya_time.npy')
+):
+    bhattacharyya_filters, bhattacharyya_times = [], []
+    for rep in range(N_REPS):
+        torch.manual_seed(202 + rep)
+        bhattacharyya_model = sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+            distance_fun=sqfa.distances.bhattacharyya,
+        )
+        start = time.time()
+        bhattacharyya_model.fit(
+            x_train,
+            y_train,
+            max_epochs=300,
+            show_progress=False,
+            pairwise=True,
+            estimator="empirical",
+        )
+        bhattacharyya_times.append(time.time() - start)
+        bhattacharyya_filters.append(
+            bhattacharyya_model.filters.detach().cpu().numpy()
+        )
+    np.save('filters/bhattacharyya_filters.npy', np.array(bhattacharyya_filters))
+    np.save('filters/bhattacharyya_time.npy', np.array(bhattacharyya_times))
 
 
 # ------------------------------
 # Train Hellinger
 # ------------------------------
-hellinger_filter_list = []
-hellinger_times = []
-for _rep in range(N_REPS):
-    hellinger_model = sqfa.model.SQFA(
-        n_dim=x_train.shape[1],
-        n_filters=N_FILTERS,
-        feature_noise=RESPONSE_NOISE,
-        distance_fun=sqfa.distances.hellinger,
-    )
-    start = time.time()
-    hellinger_model.fit(
-        x_train,
-        y_train,
-        max_epochs=300,
-        show_progress=False,
-        pairwise=True,
-        estimator="empirical",
-    )
-    hellinger_times.append(time.time() - start)
-    hellinger_filter_list.append(hellinger_model.filters.detach().numpy())
+if not (
+    os.path.exists('filters/hellinger_filters.npy')
+    and os.path.exists('filters/hellinger_time.npy')
+):
+    hellinger_filter_list = []
+    hellinger_times = []
+    for _rep in range(N_REPS):
+        hellinger_model = sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+            distance_fun=sqfa.distances.hellinger,
+        )
+        start = time.time()
+        hellinger_model.fit(
+            x_train,
+            y_train,
+            max_epochs=300,
+            show_progress=False,
+            pairwise=True,
+            estimator="empirical",
+        )
+        hellinger_times.append(time.time() - start)
+        hellinger_filter_list.append(hellinger_model.filters.detach().numpy())
 
-np.save('filters/hellinger_filters.npy', np.array(hellinger_filter_list))
-np.save('filters/hellinger_time.npy', np.array(hellinger_times))
+    np.save('filters/hellinger_filters.npy', np.array(hellinger_filter_list))
+    np.save('filters/hellinger_time.npy', np.array(hellinger_times))
+
+
+# ------------------------------
+# Train Wasserstein
+# ------------------------------
+if not (
+    os.path.exists('filters/wasserstein_filters.npy')
+    and os.path.exists('filters/wasserstein_time.npy')
+):
+    torch.manual_seed(402)
+    wasserstein_filters, wasserstein_times = train_sqfa_repeated(
+        model_factory=lambda: sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+            distance_fun=sqfa.distances.wasserstein,
+            constraint="orthogonal",
+        ),
+        x_train=x_train,
+        y_train=y_train,
+        n_reps=N_REPS,
+        fit_kwargs={
+            "max_epochs": 300,
+            "show_progress": False,
+            "pairwise": True,
+            "estimator": "empirical",
+        },
+        dtypes=(torch.float64,),
+        run_label="wasserstein training",
+    )
+    np.save('filters/wasserstein_filters.npy', wasserstein_filters)
+    np.save('filters/wasserstein_time.npy', wasserstein_times)
+
+
+# ------------------------------
+# Train Jeffreys
+# ------------------------------
+if not (
+    os.path.exists('filters/jeffreys_filters.npy')
+    and os.path.exists('filters/jeffreys_time.npy')
+):
+    jeffreys_filters, jeffreys_times = [], []
+    for rep in range(N_REPS):
+        torch.manual_seed(502 + rep)
+        jeffreys_model = sqfa.model.SQFA(
+            n_dim=x_train.shape[1],
+            n_filters=N_FILTERS,
+            feature_noise=RESPONSE_NOISE,
+            distance_fun=sqfa.distances.jeffreys,
+        )
+        start = time.time()
+        jeffreys_model.fit(
+            x_train,
+            y_train,
+            max_epochs=300,
+            show_progress=False,
+            pairwise=True,
+            estimator="empirical",
+        )
+        jeffreys_times.append(time.time() - start)
+        jeffreys_filters.append(jeffreys_model.filters.detach().cpu().numpy())
+    np.save('filters/jeffreys_filters.npy', np.array(jeffreys_filters))
+    np.save('filters/jeffreys_time.npy', np.array(jeffreys_times))
 
 
 # ------------------------------
 # Train AMA
 # ------------------------------
-x_train_ch = x_train.unsqueeze(1)  # Add channel dimension
-ama_filters, ama_times = [], []
-for rep in range(N_REPS):
-    torch.manual_seed(302 + rep)
-    ama = AMAGauss(
-        stimuli=x_train_ch,
-        labels=y_train,
-        n_filters=N_FILTERS,
-        response_noise=RESPONSE_NOISE,
-    )
-    start = time.time()
-    fit(
-        model=ama,
-        stimuli=x_train_ch,
-        labels=y_train,
-        max_epochs=100,
-        lr=0.2,
-        show_progress=False,
-        pairwise=True,
-    )
-    ama_times.append(time.time() - start)
-    ama_filters.append(
-        np.asarray(ama.filters.squeeze().detach().cpu().numpy(), dtype=np.float32)
-    )
+if not (
+    os.path.exists('filters/ama_filters.npy')
+    and os.path.exists('filters/ama_time.npy')
+):
+    x_train_ch = x_train.unsqueeze(1)  # Add channel dimension
+    ama_filters, ama_times = [], []
+    for rep in range(N_REPS):
+        torch.manual_seed(302 + rep)
+        ama = AMAGauss(
+            stimuli=x_train_ch,
+            labels=y_train,
+            n_filters=N_FILTERS,
+            response_noise=RESPONSE_NOISE,
+        )
+        start = time.time()
+        fit(
+            model=ama,
+            stimuli=x_train_ch,
+            labels=y_train,
+            max_epochs=100,
+            lr=0.2,
+            show_progress=False,
+            pairwise=True,
+        )
+        ama_times.append(time.time() - start)
+        ama_filters.append(
+            np.asarray(ama.filters.squeeze().detach().cpu().numpy(), dtype=np.float32)
+        )
 
-np.save('filters/ama_filters.npy', np.asarray(ama_filters))
-np.save('filters/ama_time.npy', np.asarray(ama_times))
+    np.save('filters/ama_filters.npy', np.asarray(ama_filters))
+    np.save('filters/ama_time.npy', np.asarray(ama_times))
 
 
 # ------------------------------
@@ -269,28 +353,32 @@ np.save('filters/ica_time.npy', np.array(ica_time))
 # ------------------------------
 # Train LMNN
 # ------------------------------
-pca_subsample = PCA(n_components=N_DIM_LMNN)
-pca_subsample.fit(x_train)
-x_transformed = pca_subsample.transform(x_train)
+if not (
+    os.path.exists('filters/lmnn_filters.npy')
+    and os.path.exists('filters/lmnn_time.npy')
+):
+    pca_subsample = PCA(n_components=N_DIM_LMNN)
+    pca_subsample.fit(x_train)
+    x_transformed = pca_subsample.transform(x_train)
 
-y_train_sub = y_train.numpy()[::N_SUBSAMPLE_LMNN]
-x_transformed_sub = x_transformed[::N_SUBSAMPLE_LMNN]
+    y_train_sub = y_train.numpy()[::N_SUBSAMPLE_LMNN]
+    x_transformed_sub = x_transformed[::N_SUBSAMPLE_LMNN]
 
-lmnn = LMNN(
-    n_neighbors=3,
-    learn_rate=1e-6,
-    n_components=8,
-    init='pca',
-    verbose=True,
-    max_iter=2000,
-    convergence_tol=1.0,
-)
-start = time.time()
-lmnn.fit(x_transformed_sub, y_train_sub)
-lmnn_time = time.time() - start
-lmnn_filters = pca_subsample.inverse_transform(lmnn.components_)
-np.save('filters/lmnn_filters.npy', np.array(lmnn_filters))
-np.save('filters/lmnn_time.npy', np.array(lmnn_time))
+    lmnn = LMNN(
+        n_neighbors=3,
+        learn_rate=1e-6,
+        n_components=8,
+        init='pca',
+        verbose=True,
+        max_iter=2000,
+        convergence_tol=1.0,
+    )
+    start = time.time()
+    lmnn.fit(x_transformed_sub, y_train_sub)
+    lmnn_time = time.time() - start
+    lmnn_filters = pca_subsample.inverse_transform(lmnn.components_)
+    np.save('filters/lmnn_filters.npy', np.array(lmnn_filters))
+    np.save('filters/lmnn_time.npy', np.array(lmnn_time))
 
 
 #############################
@@ -304,9 +392,13 @@ filter_filenames = [
     'smsqfa_filters.npy',
     'bhattacharyya_filters.npy',
     'hellinger_filters.npy',
+    'wasserstein_filters.npy',
+    'jeffreys_filters.npy',
     'ama_filters.npy',
     'lda_filters.npy',
     'spca_filters.npy',
+    'filters_review/lfda_filters_n8.npy',
+    'filters_review/wda_filters_n8.npy',
     'pca_filters.npy',
     'lmnn_filters.npy',
 ]
@@ -316,16 +408,27 @@ model_names = [
     "smSQFA",
     "Bhatt",
     "Hellinger",
+    "SQFA-W",
+    "SQFA-J",
     "AMA",
     "LDA",
     "SPCA",
+    "LFDA",
+    "WDA",
     "PCA",
     "LMNN",
 ]
 
-model_filters = [np.load(f'filters/{name}') for name in filter_filenames]
+model_filters = [
+    np.load(name if name.startswith('filters_review/') else f'filters/{name}')
+    for name in filter_filenames
+]
 model_times = [
-    np.load(f"filters/{name.replace('filters', 'time')}")
+    np.load(
+        name.replace('_filters_', '_time_')
+        if name.startswith('filters_review/')
+        else f"filters/{name.replace('filters', 'time')}"
+    )
     for name in filter_filenames
 ]
 

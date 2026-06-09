@@ -1,6 +1,7 @@
+"""Plot contours of different distances for 2D Gaussians with 0-mean"""
+
 import torch
 import matplotlib.pyplot as plt
-
 
 #################
 # GENERALIZED EIGENVALUES TO USE

@@ -44,7 +44,7 @@ fisher_rao = fisher_rao_same_cov(reference_stats, all_stats).squeeze(0)
 hellinger = hellinger(reference_stats, all_stats).squeeze(0)
 bhatt = bhattacharyya(reference_stats, all_stats).squeeze(0)
 
-plt.figure(figsize=(4, 4))
+plt.figure(figsize=(4, 3))
 plt.plot(euclidean.numpy(), fisher_rao.numpy(), label="Fisher–Rao")
 plt.plot(euclidean.numpy(), hellinger.numpy(), label="Hellinger")
 plt.plot(euclidean.numpy(), bhatt.numpy(), label="Bhattacharyya")
@@ -53,7 +53,7 @@ plt.ylabel("Distance")
 plt.legend()
 plt.tight_layout()
 plt.savefig('distances_means.pdf')
-plt.show()
+#plt.show()
 
 
 #############
@@ -69,7 +69,7 @@ bhatt = torch.log((1 + eigval) / 2) - 0.5 * torch.log(eigval)
 bhatt = bhatt * torch.sign(bhatt)
 hellinger = torch.sqrt(1 - torch.exp(-bhatt))
 
-plt.figure(figsize=(4, 4))
+plt.figure(figsize=(4, 3))
 plt.plot(eigval_log, fisher_rao.numpy(), label="Fisher–Rao")
 plt.plot(eigval_log, hellinger.numpy(), label="Hellinger")
 plt.plot(eigval_log, bhatt.numpy(), label="Bhattacharyya")
@@ -78,5 +78,5 @@ plt.ylabel("Distance")
 plt.legend()
 plt.tight_layout()
 plt.savefig('distances_variance.pdf')
-plt.show()
+#plt.show()
 

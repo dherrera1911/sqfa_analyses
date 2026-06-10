@@ -53,7 +53,7 @@ from pkg_utils import (
 )
 
 
-FILTER_RANGE = (2, 4, 6)
+FILTER_RANGE = (2, 4, 8)
 AREA_KEY = "V1"
 CONDITION = CONDITIONS[0]["condition"]
 PROCESSED_DATA_DIR = os.path.join(SCRIPT_DIR, "processed_data")
@@ -64,12 +64,12 @@ N_REPS = 1
 EXPENSIVE_METHOD_SPLITS = (0,)
 EVAL_QDA_REG = 1.0e-3
 LFDA_K_VALS = torch.tensor([3, 5, 9, 17])
-LFDA_PCA_DIM = 50
+LFDA_PCA_DIM = 100
 LFDA_EMBEDDING_TYPE = "orthonormalized"
-LMNN_PCA_DIM = 50
+LMNN_PCA_DIM = 100
 KNN_N_NEIGHBORS = 5
 WDA_REG_VALS = np.array([0.01, 0.05, 0.1, 0.2, 0.5], dtype=float)
-WDA_PCA_DIM = 50
+WDA_PCA_DIM = 100
 WDA_SAMPLES_PER_CLASS = 250
 WDA_SINKHORN_ITERS = 10
 WDA_MAXITER = 100

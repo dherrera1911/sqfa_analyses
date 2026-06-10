@@ -29,8 +29,8 @@ from pkg_utils.fisher_rao import (
 
 AREA_KEY = "V1"
 CONDITION = CONDITIONS[0]["condition"]
-FILTER_RANGE = (2, 4, 6, 8)
-CALVO_OLLER_N_FILTERS = 6
+FILTER_RANGE = (2, 4, 8)
+CALVO_OLLER_N_FILTERS = 8
 PROCESSED_DATA_DIR = os.path.join(SCRIPT_DIR, "processed_data")
 FILTERS_DIR = os.path.join(SCRIPT_DIR, "filters_review")
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results_true_FR_n_filters")
@@ -44,10 +44,6 @@ METHOD_SPECS = (
     ("jeffreys", "jeffreys"),
     ("pca", "pca"),
     ("lda", "lda"),
-    ("spca", "spca"),
-    ("lfda", "lfda"),
-    ("wda", "wda"),
-    ("lmnn", "lmnn"),
 )
 
 os.makedirs(RESULTS_DIR, exist_ok=True)

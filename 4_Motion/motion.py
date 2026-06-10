@@ -1,3 +1,5 @@
+"""This script trains SQFA methods pairwise on the motion dataset,
+to provide more interpretable filters."""
 import os
 import sys
 import time

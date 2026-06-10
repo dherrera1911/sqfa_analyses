@@ -35,14 +35,17 @@ def qda_accuracy(
     return accuracy
 
 
-def qda_accuracy_gaussian(x_train, y_train, filters):
+def qda_accuracy_gaussian(x_train, y_train, filters, eval_qda_reg=1.0e-4):
     """Fit QDA model to the training data and return the accuracy on the test data."""
     filters = np.asarray(filters)
     filters = filters / np.linalg.norm(filters, axis=1, keepdims=True)
     # Get the features
     z_train = torch.matmul(x_train, torch.as_tensor(filters.T).float())
     # Fit QDA model
-    qda = QuadraticDiscriminantAnalysis(store_covariance=True)
+    qda = QuadraticDiscriminantAnalysis(
+        store_covariance=True,
+        reg_param=eval_qda_reg,
+    )
     qda.fit(z_train, y_train)
     # Simulate Gaussian data for the testing set
     n_samples = 20000

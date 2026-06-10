@@ -13,7 +13,9 @@ from .n_filters import (
     export_metric_results_csv,
     max_supported_filter_count,
     plot_metric_results,
+    REVIEW_MODEL_SPECS,
     summarize_metric_results,
+    summarize_training_time_table,
 )
 from .regularization import (
     load_or_validate_lda_shrinkage,
@@ -53,7 +55,9 @@ __all__ = [
     "export_metric_results_csv",
     "max_supported_filter_count",
     "plot_metric_results",
+    "REVIEW_MODEL_SPECS",
     "summarize_metric_results",
+    "summarize_training_time_table",
     "validate_regularization",
     "validate_lfda_k",
     "load_or_validate_noise",
